@@ -173,7 +173,7 @@ export function PhysicsCanvas() {
         if (newSize !== currentLetterSize) {
           currentLetterSize = newSize
           spawnLetters(currentLetterSize, cW, cH)
-          spawnTime = performance.now()
+
         }
       }
 
@@ -324,7 +324,9 @@ export function PhysicsCanvas() {
         }
         lastSecond = currentSecond
 
-        const trailDuration = 400
+        const isMobile = navigator.maxTouchPoints > 0
+        const trailDuration = isMobile ? 200 : 400
+        const trailSubsteps = isMobile ? 1 : 3
 
         ctx.clearRect(0, 0, cW, cH)
 
@@ -333,14 +335,13 @@ export function PhysicsCanvas() {
           const pos = body.translation()
           const angle = body.rotation()
 
-          // Push 4 samples per frame: 3 interpolated steps + current
           const prev = trail[trail.length - 1]
           if (prev) {
             let da = angle - prev.angle
             if (da > Math.PI) da -= 2 * Math.PI
             if (da < -Math.PI) da += 2 * Math.PI
-            for (let s = 1; s <= 3; s++) {
-              const t = s / 4
+            for (let s = 1; s <= trailSubsteps; s++) {
+              const t = s / (trailSubsteps + 1)
               trail.push({
                 x: prev.x + (pos.x - prev.x) * t,
                 y: prev.y + (pos.y - prev.y) * t,
