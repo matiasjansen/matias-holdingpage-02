@@ -132,6 +132,7 @@ export function PhysicsCanvas() {
     // Continuous rotation: π/2 every 5s = π/10 rad/s — no stepping, no phase shock
     const WIND_RATE = Math.PI / 10
     let mouseNDC: { x: number; y: number } | null = null
+    let smoothedNDC: { x: number; y: number } | null = null
     let mouseDown = false
 
     let threeSetup: {
@@ -454,6 +455,18 @@ export function PhysicsCanvas() {
             const maxZ = cW * 0.14
             const maxY = cH * 0.07
 
+            // Ease smoothedNDC toward mouseNDC each frame (dt-independent lerp)
+            const ease = 1 - Math.pow(0.04, dt)
+            if (mouseNDC) {
+              if (!smoothedNDC) smoothedNDC = { ...mouseNDC }
+              else {
+                smoothedNDC.x += (mouseNDC.x - smoothedNDC.x) * ease
+                smoothedNDC.y += (mouseNDC.y - smoothedNDC.y) * ease
+              }
+            } else {
+              smoothedNDC = null
+            }
+
             // Slow gust envelope
             const gust = 0.6 + 0.25 * Math.sin(t * 0.31) + 0.15 * Math.cos(t * 0.19 + 1.1)
             // Rough gusty mouse wind stream: layered sines at mismatched frequencies
@@ -488,10 +501,10 @@ export function PhysicsCanvas() {
                 // Mouse wind — tight jet blowing fabric away from viewer at cursor, concentric falloff
               let mdz = 0
 
-              if (mouseNDC) {
+              if (smoothedNDC) {
                 const sigma = Math.min(cW, cH) * 0.12
-                const mwx = mouseNDC.x * cW / 2
-                const mwy = mouseNDC.y * cH / 2
+                const mwx = smoothedNDC.x * cW / 2
+                const mwy = smoothedNDC.y * cH / 2
                 const ddx = ox - mwx, ddy = oy - mwy
                 const g = Math.exp(-(ddx * ddx + ddy * ddy) / (2 * sigma * sigma))
                 mdz -= maxZ * 6.4 * windStr * g
@@ -503,11 +516,11 @@ export function PhysicsCanvas() {
             geometry.computeVertexNormals()
             renderer.render(scene, camera)
 
-            if (windBallVisible && mouseNDC) {
+            if (windBallVisible && smoothedNDC) {
               const sigma = Math.min(cW, cH) * 0.12
               const ballR = sigma * (1.5 + 0.5 * windStr)
-              const cx = (mouseNDC.x + 1) / 2 * cW
-              const cy = (1 - mouseNDC.y) / 2 * cH
+              const cx = (smoothedNDC.x + 1) / 2 * cW
+              const cy = (1 - smoothedNDC.y) / 2 * cH
               windBall.style.display = 'block'
               windBall.style.width = `${ballR * 2}px`
               windBall.style.height = `${ballR * 2}px`
