@@ -11,9 +11,9 @@ interface LetterDef {
 
 function buildLetters(): LetterDef[] {
   const rows: [string, number][] = [
-    ['Matias',    192],
-    ['Jansen,',   192],
-    ['Designer',  192],
+    ['Matias',    256],
+    ['Jansen,',   256],
+    ['Designer',  256],
   ]
   return rows.flatMap(([word, size]) =>
     Array.from(word).map(char => ({ char, size }))
@@ -183,11 +183,43 @@ export function PhysicsCanvas() {
 
         const hull = RAPIER.ColliderDesc.convexHull(flatVerts)
         if (!hull) continue
-        hull.setRestitution(0.3).setFriction(0.6)
+        hull.setRestitution(0.8).setFriction(0.6)
         world.createCollider(hull, body)
 
         entries.push({ body, svgPath: path.toPathData(4), renderOffset })
       }
+
+      let draggedBody: RAPIER.RigidBody | null = null
+      let dragOffsetX = 0, dragOffsetY = 0
+
+      canvas.addEventListener('mousedown', (e) => {
+        const x = e.clientX, y = e.clientY
+        for (const { body } of entries) {
+          const pos = body.translation()
+          const dx = x - pos.x, dy = y - pos.y
+          if (Math.hypot(dx, dy) < 100) {
+            draggedBody = body
+            dragOffsetX = dx
+            dragOffsetY = dy
+            break
+          }
+        }
+      })
+
+      canvas.addEventListener('mousemove', (e) => {
+        if (!draggedBody) return
+        const x = e.clientX, y = e.clientY
+        const targetX = x - dragOffsetX
+        const targetY = y - dragOffsetY
+        const pos = draggedBody.translation()
+        const dx = targetX - pos.x
+        const dy = targetY - pos.y
+        draggedBody.applyForce({ x: dx * 0.3, y: dy * 0.3 }, true)
+      })
+
+      canvas.addEventListener('mouseup', () => {
+        draggedBody = null
+      })
 
       const draw = () => {
         if (!alive) return
@@ -204,10 +236,6 @@ export function PhysicsCanvas() {
           ctx.translate(pos.x, pos.y)
           ctx.rotate(angle)
           ctx.translate(-renderOffset.x, -renderOffset.y)
-          ctx.shadowColor = 'rgba(0,0,0,0.6)'
-          ctx.shadowBlur = 8
-          ctx.shadowOffsetX = 3
-          ctx.shadowOffsetY = 3
           ctx.fillStyle = '#ffffff'
           ctx.fill(new Path2D(svgPath), 'evenodd')
           ctx.restore()
