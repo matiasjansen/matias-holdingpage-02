@@ -23,7 +23,7 @@ html, body, #root {
   to   { opacity: 1; filter: blur(0px); }
 }
 
-@media (hover: none) {
+@media (hover: none) and (max-width: 767px) {
   @keyframes blurIn {
     from { opacity: 0; }
     to   { opacity: 1; }

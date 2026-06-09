@@ -324,7 +324,7 @@ export function PhysicsCanvas() {
         }
         lastSecond = currentSecond
 
-        const isMobile = navigator.maxTouchPoints > 0
+        const isMobile = navigator.maxTouchPoints > 0 && Math.min(window.innerWidth, window.innerHeight) < 768
         const trailDuration = isMobile ? 200 : 400
         const trailSubsteps = isMobile ? 1 : 3
 
