@@ -335,12 +335,15 @@ export function PhysicsCanvas() {
           // Push 4 samples per frame: 3 interpolated steps + current
           const prev = trail[trail.length - 1]
           if (prev) {
+            let da = angle - prev.angle
+            if (da > Math.PI) da -= 2 * Math.PI
+            if (da < -Math.PI) da += 2 * Math.PI
             for (let s = 1; s <= 3; s++) {
               const t = s / 4
               trail.push({
                 x: prev.x + (pos.x - prev.x) * t,
                 y: prev.y + (pos.y - prev.y) * t,
-                angle: prev.angle + (angle - prev.angle) * t,
+                angle: prev.angle + da * t,
                 timestamp: prev.timestamp + (now - prev.timestamp) * t,
               })
             }

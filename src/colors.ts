@@ -78,6 +78,8 @@ export const typographyPrimitives = {
   fontSize256: '256px',
   fontSize288: '288px',
   fontSize320: '320px',
+  fontSize340: '340px',
+  fontSize360: '360px',
 
   lineHeight16: '16px',
   lineHeight20: '20px',

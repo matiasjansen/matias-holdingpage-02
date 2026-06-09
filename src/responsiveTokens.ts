@@ -6,8 +6,8 @@ export const letterSizeByBreakpoint = {
   [breakpoints.md]: typographyPrimitives.fontSize160,
   [breakpoints.lg]: typographyPrimitives.fontSize224,
   [breakpoints.xl]: typographyPrimitives.fontSize288,
-  [breakpoints['2xl']]: typographyPrimitives.fontSize320,
-  [breakpoints['3xl']]: typographyPrimitives.fontSize320,
+  [breakpoints['2xl']]: typographyPrimitives.fontSize340,
+  [breakpoints['3xl']]: typographyPrimitives.fontSize360,
 } as const
 
 export function getLetterSize(windowWidth: number): string {
