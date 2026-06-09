@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import RAPIER from '@dimforge/rapier2d-compat'
 import opentype from 'opentype.js'
 import { type Theme, systemMode, themeFor } from './colors'
+import { getLetterSize } from './responsiveTokens'
 
 const fontUrl = '/fonts/SF-Pro-Display-Regular.otf'
 
@@ -10,13 +11,9 @@ interface LetterDef {
   size: number
 }
 
-function buildLetters(): LetterDef[] {
-  const rows: [string, number][] = [
-    ['Matias',    256],
-    ['Jansen,',   256],
-    ['Designer',  256],
-  ]
-  return rows.flatMap(([word, size]) =>
+function buildLetters(size: number): LetterDef[] {
+  const rows: string[] = ['Matias', 'Jansen,', 'Designer']
+  return rows.flatMap(word =>
     Array.from(word).map(char => ({ char, size }))
   )
 }
@@ -114,6 +111,8 @@ export function PhysicsCanvas() {
     let rafId = 0
     let alive = true
     let theme: Theme = themeFor(systemMode())
+    let gravityDirection = 0 // 0=down, 1=right, 2=up, 3=left
+    let setGravity: ((dir: number) => void) | undefined
 
     async function init() {
       await RAPIER.init()
@@ -123,6 +122,17 @@ export function PhysicsCanvas() {
       if (!alive) return
 
       const world = new RAPIER.World({ x: 0, y: 800 })
+
+      const gravityVectors = [
+        { x: 0, y: 800 },    // down
+        { x: 800, y: 0 },    // right
+        { x: 0, y: -800 },   // up
+        { x: -800, y: 0 },   // left
+      ]
+
+      setGravity = (dir: number) => {
+        world.gravity = gravityVectors[dir % 4]
+      }
 
       let cW = W, cH = H
 
@@ -149,59 +159,76 @@ export function PhysicsCanvas() {
         ceiling.setTranslation({ x: cW / 2, y: -40 }, true)
         wallL.setTranslation({ x: -40, y: cH / 2 }, true)
         wallR.setTranslation({ x: cW + 40, y: cH / 2 }, true)
+
+        const newSize = parseInt(getLetterSize(cW))
+        if (newSize !== currentLetterSize) {
+          currentLetterSize = newSize
+          spawnLetters(currentLetterSize, cW, cH)
+        }
       }
 
-      resizeObserver = new ResizeObserver(() => onResize())
+      let resizeTimer = 0
+      resizeObserver = new ResizeObserver(() => {
+        clearTimeout(resizeTimer)
+        resizeTimer = window.setTimeout(() => onResize(), 150)
+      })
       resizeObserver.observe(document.documentElement)
 
-      const letters = buildLetters()
       const entries: Entry[] = []
+      let currentLetterSize = parseInt(getLetterSize(W))
 
-      for (const [i, letter] of letters.entries()) {
-        const glyph = otFont.charToGlyph(letter.char)
-        const path = glyph.getPath(0, 0, letter.size)
-        const bb = glyph.getBoundingBox()
-        const scale = letter.size / otFont.unitsPerEm
+      function spawnLetters(size: number, width: number, height: number) {
+        // Remove existing letter bodies
+        for (const { body } of entries) world.removeRigidBody(body)
+        entries.length = 0
 
-        const renderOffset: Pt = {
-          x: (bb.x1 + bb.x2) / 2 * scale,
-          y: -(bb.y1 + bb.y2) / 2 * scale,
+        const letters = buildLetters(size)
+        for (const letter of letters) {
+          const glyph = otFont.charToGlyph(letter.char)
+          const path = glyph.getPath(0, 0, letter.size)
+          const bb = glyph.getBoundingBox()
+          const scale = letter.size / otFont.unitsPerEm
+
+          const renderOffset: Pt = {
+            x: (bb.x1 + bb.x2) / 2 * scale,
+            y: -(bb.y1 + bb.y2) / 2 * scale,
+          }
+
+          const contours = pathToContours(path.commands)
+          if (!contours.length) continue
+          const outer = contours.sort((a, b) => contourArea(b) - contourArea(a))[0]
+          const simplified = simplify(outer, 2)
+          if (simplified.length < 4) continue
+
+          const verts = simplified.map(p => ({ x: p.x - renderOffset.x, y: p.y - renderOffset.y }))
+          const flatVerts = new Float32Array(verts.flatMap(p => [p.x, p.y]))
+
+          const spawnX = 60 + Math.random() * (width - 120)
+          const spawnY = 60 + Math.random() * (height * 0.5)
+
+          const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
+            .setTranslation(spawnX, spawnY)
+            .setRotation((Math.random() - 0.5) * 0.4)
+          const body = world.createRigidBody(bodyDesc)
+
+          const hull = RAPIER.ColliderDesc.convexHull(flatVerts)
+          if (!hull) continue
+          hull.setRestitution(0.8).setFriction(0.6)
+          world.createCollider(hull, body)
+
+          entries.push({ body, svgPath: path.toPathData(4), renderOffset })
         }
-
-        const contours = pathToContours(path.commands)
-        if (!contours.length) continue
-        const outer = contours.sort((a, b) => contourArea(b) - contourArea(a))[0]
-        const simplified = simplify(outer, 2)
-        if (simplified.length < 4) continue
-
-        const verts = simplified.map(p => ({ x: p.x - renderOffset.x, y: p.y - renderOffset.y }))
-        const flatVerts = new Float32Array(verts.flatMap(p => [p.x, p.y]))
-
-        const spawnX = 60 + Math.random() * (W - 120)
-        const spawnY = 60 + Math.random() * (H * 0.5)
-
-        const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-          .setTranslation(spawnX, spawnY)
-          .setRotation((Math.random() - 0.5) * 0.4)
-        const body = world.createRigidBody(bodyDesc)
-
-        const hull = RAPIER.ColliderDesc.convexHull(flatVerts)
-        if (!hull) continue
-        hull.setRestitution(0.8).setFriction(0.6)
-        world.createCollider(hull, body)
-
-        entries.push({ body, svgPath: path.toPathData(4), renderOffset })
       }
+
+      spawnLetters(currentLetterSize, W, H)
 
       let draggedBody: RAPIER.RigidBody | null = null
       let dragOffsetX = 0, dragOffsetY = 0
 
-      const onMouseDown = (e: MouseEvent) => {
-        const x = e.clientX, y = e.clientY
+      const tryDrag = (x: number, y: number) => {
         for (const { body, renderOffset } of entries) {
           const pos = body.translation()
           const angle = body.rotation()
-          // transform mouse into body-local space to account for rotation
           const cos = Math.cos(-angle), sin = Math.sin(-angle)
           const lx = cos * (x - pos.x) - sin * (y - pos.y)
           const ly = sin * (x - pos.x) + cos * (y - pos.y)
@@ -212,9 +239,14 @@ export function PhysicsCanvas() {
             dragOffsetX = x - pos.x
             dragOffsetY = y - pos.y
             body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true)
-            break
+            return true
           }
         }
+        return false
+      }
+
+      const onMouseDown = (e: MouseEvent) => {
+        tryDrag(e.clientX, e.clientY)
       }
 
       const onMouseMove = (e: MouseEvent) => {
@@ -231,20 +263,42 @@ export function PhysicsCanvas() {
         draggedBody = null
       }
 
+      const onTouchStart = (e: TouchEvent) => {
+        if (e.touches.length === 0) return
+        tryDrag(e.touches[0].clientX, e.touches[0].clientY)
+      }
+
+      const onTouchMove = (e: TouchEvent) => {
+        if (!draggedBody || e.touches.length === 0) return
+        draggedBody.setNextKinematicTranslation({
+          x: e.touches[0].clientX - dragOffsetX,
+          y: e.touches[0].clientY - dragOffsetY,
+        })
+      }
+
+      const onTouchEnd = () => {
+        if (!draggedBody) return
+        draggedBody.setBodyType(RAPIER.RigidBodyType.Dynamic, true)
+        draggedBody = null
+      }
+
       canvas.addEventListener('mousedown', onMouseDown)
       document.addEventListener('mousemove', onMouseMove)
       document.addEventListener('mouseup', onMouseUp)
+      canvas.addEventListener('touchstart', onTouchStart)
+      document.addEventListener('touchmove', onTouchMove)
+      document.addEventListener('touchend', onTouchEnd)
       cleanupDrag = () => {
         canvas.removeEventListener('mousedown', onMouseDown)
         document.removeEventListener('mousemove', onMouseMove)
         document.removeEventListener('mouseup', onMouseUp)
+        canvas.removeEventListener('touchstart', onTouchStart)
+        document.removeEventListener('touchmove', onTouchMove)
+        document.removeEventListener('touchend', onTouchEnd)
       }
 
       let lastTime = performance.now()
-      let stillFrames = 0
-      const STILL_THRESHOLD = 0.5
-      const FULL_CLEAR_AFTER = 120 // frames
-
+      let lastSecond = -1
       const draw = (now: number) => {
         if (!alive) return
 
@@ -253,18 +307,14 @@ export function PhysicsCanvas() {
         world.timestep = dt
         world.step()
 
-        const anyMoving = entries.some(({ body }) => {
-          const v = body.linvel()
-          return Math.hypot(v.x, v.y) > STILL_THRESHOLD || Math.abs(body.angvel()) > STILL_THRESHOLD
-        })
-
-        if (anyMoving) {
-          stillFrames = 0
-          ctx.fillStyle = theme.trail
-        } else {
-          stillFrames++
-          ctx.fillStyle = stillFrames >= FULL_CLEAR_AFTER ? theme.background : theme.trail
+        const currentSecond = Math.floor((now / 1000) % 60)
+        if (currentSecond !== lastSecond && currentSecond % 5 === 0) {
+          gravityDirection = (gravityDirection + 1) % 4
+          setGravity?.(gravityDirection)
         }
+        lastSecond = currentSecond
+
+        ctx.fillStyle = theme.trail
         ctx.fillRect(0, 0, cW, cH)
 
         for (const { body, svgPath, renderOffset } of entries) {
@@ -274,10 +324,50 @@ export function PhysicsCanvas() {
           ctx.translate(pos.x, pos.y)
           ctx.rotate(angle)
           ctx.translate(-renderOffset.x, -renderOffset.y)
-          ctx.fillStyle = theme.letter
+          ctx.fillStyle = theme.onSurface
           ctx.fill(new Path2D(svgPath), 'evenodd')
           ctx.restore()
         }
+
+        // Analog clock (hidden for now)
+        /*
+        const currentTime = new Date()
+        const hours = currentTime.getHours() % 12
+        const minutes = currentTime.getMinutes()
+        const seconds = currentTime.getSeconds()
+        const ms = currentTime.getMilliseconds()
+
+        const totalMs = seconds * 1000 + ms
+        const secondsAngle = (totalMs / 60000) * 2 * Math.PI - Math.PI / 2
+        const minuteAngle = (minutes * 60000 + totalMs) / 3600000 * 2 * Math.PI - Math.PI / 2
+        const hourAngle = (hours * 3600000 + minutes * 60000 + totalMs) / 43200000 * 2 * Math.PI - Math.PI / 2
+
+        const cx = cW / 2, cy = cH / 2
+        ctx.lineCap = 'round'
+
+        // Seconds hand (orange-red)
+        ctx.strokeStyle = '#ff5722'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.lineTo(cx + Math.cos(secondsAngle) * 70, cy + Math.sin(secondsAngle) * 70)
+        ctx.stroke()
+
+        // Minute hand
+        ctx.strokeStyle = theme.letter
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.lineTo(cx + Math.cos(minuteAngle) * 60, cy + Math.sin(minuteAngle) * 60)
+        ctx.stroke()
+
+        // Hour hand
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.lineTo(cx + Math.cos(hourAngle) * 40, cy + Math.sin(hourAngle) * 40)
+        ctx.stroke()
+        */
 
         rafId = requestAnimationFrame(draw)
       }
@@ -289,17 +379,32 @@ export function PhysicsCanvas() {
     const onSchemeChange = () => { theme = themeFor(systemMode()) }
     mq.addEventListener('change', onSchemeChange)
 
-    // Triple-0 secret toggle
+    // Triple-0 secret toggle (dark/light)
     let zeroCount = 0
     let zeroTimer = 0
+    // Triple-9 secret toggle (rotate gravity)
+    let nineCount = 0
+    let nineTimer = 0
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== '0') return
-      zeroCount++
-      clearTimeout(zeroTimer)
-      zeroTimer = window.setTimeout(() => { zeroCount = 0 }, 500)
-      if (zeroCount >= 3) {
-        zeroCount = 0
-        theme = theme === themeFor('dark') ? themeFor('light') : themeFor('dark')
+      if (e.key === '0') {
+        zeroCount++
+        clearTimeout(zeroTimer)
+        zeroTimer = window.setTimeout(() => { zeroCount = 0 }, 500)
+        if (zeroCount >= 3) {
+          zeroCount = 0
+          const newMode = theme === themeFor('dark') ? 'light' : 'dark'
+          theme = themeFor(newMode)
+          window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
+        }
+      } else if (e.key === '9') {
+        nineCount++
+        clearTimeout(nineTimer)
+        nineTimer = window.setTimeout(() => { nineCount = 0 }, 500)
+        if (nineCount >= 3) {
+          nineCount = 0
+          gravityDirection = (gravityDirection + 1) % 4
+          setGravity?.(gravityDirection)
+        }
       }
     }
     document.addEventListener('keydown', onKeyDown)

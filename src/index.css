@@ -6,12 +6,27 @@ html, body, #root {
   overflow: hidden;
 }
 
-span {
-  color: #1a1a1a;
+.clock {
+  position: fixed;
+  top: 70px;
+  left: 24px;
+  font-size: 24px;
+  line-height: 32px;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  user-select: none;
+  z-index: 1000;
+  white-space: pre;
 }
 
-@media (prefers-color-scheme: dark) {
-  span {
-    color: #e8e8e8;
-  }
+.label {
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  font-size: 24px;
+  line-height: 32px;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  user-select: none;
+  z-index: 1000;
 }
+
+/* Typography primitives and tokens are defined in typography.ts */
