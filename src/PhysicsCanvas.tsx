@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import RAPIER from '@dimforge/rapier2d-compat'
 import opentype from 'opentype.js'
+import { type Theme, systemMode, themeFor } from './colors'
 
 const fontUrl = '/fonts/SF-Pro-Display-Regular.otf'
 
@@ -112,6 +113,7 @@ export function PhysicsCanvas() {
 
     let rafId = 0
     let alive = true
+    let theme: Theme = themeFor(systemMode())
 
     async function init() {
       await RAPIER.init()
@@ -129,9 +131,10 @@ export function PhysicsCanvas() {
         world.createCollider(RAPIER.ColliderDesc.cuboid(hw, hh), body)
         return body
       }
-      const floor = makeStatic(W / 2, H + 40, W * 2, 40)
-      const wallL  = makeStatic(-40, H / 2, 40, H * 2)
-      const wallR  = makeStatic(W + 40, H / 2, 40, H * 2)
+      const floor  = makeStatic(W / 2, H + 40,  W * 2, 40)
+      const ceiling = makeStatic(W / 2, -40,    W * 2, 40)
+      const wallL  = makeStatic(-40,   H / 2,   40, H * 2)
+      const wallR  = makeStatic(W + 40, H / 2,  40, H * 2)
 
       const onResize = () => {
         const dpr = window.devicePixelRatio ?? 1
@@ -143,6 +146,7 @@ export function PhysicsCanvas() {
         canvas.style.height = `${cH}px`
         ctx.scale(dpr, dpr)
         floor.setTranslation({ x: cW / 2, y: cH + 40 }, true)
+        ceiling.setTranslation({ x: cW / 2, y: -40 }, true)
         wallL.setTranslation({ x: -40, y: cH / 2 }, true)
         wallR.setTranslation({ x: cW + 40, y: cH / 2 }, true)
       }
@@ -174,7 +178,7 @@ export function PhysicsCanvas() {
         const flatVerts = new Float32Array(verts.flatMap(p => [p.x, p.y]))
 
         const spawnX = 60 + Math.random() * (W - 120)
-        const spawnY = -(i * 60 + letter.size)
+        const spawnY = 60 + Math.random() * (H * 0.5)
 
         const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
           .setTranslation(spawnX, spawnY)
@@ -192,41 +196,75 @@ export function PhysicsCanvas() {
       let draggedBody: RAPIER.RigidBody | null = null
       let dragOffsetX = 0, dragOffsetY = 0
 
-      canvas.addEventListener('mousedown', (e) => {
+      const onMouseDown = (e: MouseEvent) => {
         const x = e.clientX, y = e.clientY
-        for (const { body } of entries) {
+        for (const { body, renderOffset } of entries) {
           const pos = body.translation()
-          const dx = x - pos.x, dy = y - pos.y
-          if (Math.hypot(dx, dy) < 100) {
+          const angle = body.rotation()
+          // transform mouse into body-local space to account for rotation
+          const cos = Math.cos(-angle), sin = Math.sin(-angle)
+          const lx = cos * (x - pos.x) - sin * (y - pos.y)
+          const ly = sin * (x - pos.x) + cos * (y - pos.y)
+          const hw = Math.abs(renderOffset.x)
+          const hh = Math.abs(renderOffset.y)
+          if (Math.abs(lx) < hw && Math.abs(ly) < hh) {
             draggedBody = body
-            dragOffsetX = dx
-            dragOffsetY = dy
+            dragOffsetX = x - pos.x
+            dragOffsetY = y - pos.y
+            body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true)
             break
           }
         }
-      })
+      }
 
-      canvas.addEventListener('mousemove', (e) => {
+      const onMouseMove = (e: MouseEvent) => {
         if (!draggedBody) return
-        const x = e.clientX, y = e.clientY
-        const targetX = x - dragOffsetX
-        const targetY = y - dragOffsetY
-        const pos = draggedBody.translation()
-        const dx = targetX - pos.x
-        const dy = targetY - pos.y
-        draggedBody.applyForce({ x: dx * 0.3, y: dy * 0.3 }, true)
-      })
+        draggedBody.setNextKinematicTranslation({
+          x: e.clientX - dragOffsetX,
+          y: e.clientY - dragOffsetY,
+        })
+      }
 
-      canvas.addEventListener('mouseup', () => {
+      const onMouseUp = () => {
+        if (!draggedBody) return
+        draggedBody.setBodyType(RAPIER.RigidBodyType.Dynamic, true)
         draggedBody = null
-      })
+      }
 
-      const draw = () => {
+      canvas.addEventListener('mousedown', onMouseDown)
+      document.addEventListener('mousemove', onMouseMove)
+      document.addEventListener('mouseup', onMouseUp)
+      cleanupDrag = () => {
+        canvas.removeEventListener('mousedown', onMouseDown)
+        document.removeEventListener('mousemove', onMouseMove)
+        document.removeEventListener('mouseup', onMouseUp)
+      }
+
+      let lastTime = performance.now()
+      let stillFrames = 0
+      const STILL_THRESHOLD = 0.5
+      const FULL_CLEAR_AFTER = 120 // frames
+
+      const draw = (now: number) => {
         if (!alive) return
 
+        const dt = Math.min((now - lastTime) / 1000, 0.05)
+        lastTime = now
+        world.timestep = dt
         world.step()
 
-        ctx.fillStyle = '#0a0a0a'
+        const anyMoving = entries.some(({ body }) => {
+          const v = body.linvel()
+          return Math.hypot(v.x, v.y) > STILL_THRESHOLD || Math.abs(body.angvel()) > STILL_THRESHOLD
+        })
+
+        if (anyMoving) {
+          stillFrames = 0
+          ctx.fillStyle = theme.trail
+        } else {
+          stillFrames++
+          ctx.fillStyle = stillFrames >= FULL_CLEAR_AFTER ? theme.background : theme.trail
+        }
         ctx.fillRect(0, 0, cW, cH)
 
         for (const { body, svgPath, renderOffset } of entries) {
@@ -236,22 +274,46 @@ export function PhysicsCanvas() {
           ctx.translate(pos.x, pos.y)
           ctx.rotate(angle)
           ctx.translate(-renderOffset.x, -renderOffset.y)
-          ctx.fillStyle = '#ffffff'
+          ctx.fillStyle = theme.letter
           ctx.fill(new Path2D(svgPath), 'evenodd')
           ctx.restore()
         }
 
         rafId = requestAnimationFrame(draw)
       }
-      draw()
+      rafId = requestAnimationFrame(draw)
     }
 
+    // Sync with system color scheme
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onSchemeChange = () => { theme = themeFor(systemMode()) }
+    mq.addEventListener('change', onSchemeChange)
+
+    // Triple-0 secret toggle
+    let zeroCount = 0
+    let zeroTimer = 0
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '0') return
+      zeroCount++
+      clearTimeout(zeroTimer)
+      zeroTimer = window.setTimeout(() => { zeroCount = 0 }, 500)
+      if (zeroCount >= 3) {
+        zeroCount = 0
+        theme = theme === themeFor('dark') ? themeFor('light') : themeFor('dark')
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+
     let resizeObserver: ResizeObserver | undefined
+    let cleanupDrag: (() => void) | undefined
     init().catch(err => console.error('PhysicsCanvas init error:', err))
     return () => {
       alive = false
       cancelAnimationFrame(rafId)
       resizeObserver?.disconnect()
+      cleanupDrag?.()
+      mq.removeEventListener('change', onSchemeChange)
+      document.removeEventListener('keydown', onKeyDown)
     }
   }, [])
 
