@@ -13,7 +13,7 @@ interface LetterDef {
 }
 
 function buildLetters(size: number): LetterDef[] {
-  const rows: string[] = ['Matias', 'Jansen,', 'Designer']
+  const rows: string[] = ['MATIAS', 'JANSEN,', 'DESIGNER']
   return rows.flatMap(word =>
     Array.from(word).map(char => ({ char, size }))
   )
@@ -108,10 +108,12 @@ interface Entry {
 export function PhysicsCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const webglCanvasRef = useRef<HTMLCanvasElement>(null)
+  const windBallRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current!
     const webglCanvas = webglCanvasRef.current!
+    const windBall = windBallRef.current!
     const ctx = canvas.getContext('2d')!
     const dpr = window.devicePixelRatio ?? 1
     const W = window.innerWidth
@@ -130,7 +132,6 @@ export function PhysicsCanvas() {
     const WIND_RATE = Math.PI / 10
     let mouseNDC: { x: number; y: number } | null = null
     let mouseDown = false
-    let pushEvents: { wx: number; wy: number; time: number }[] = []
 
     let threeSetup: {
       renderer: THREE.WebGLRenderer
@@ -452,7 +453,8 @@ export function PhysicsCanvas() {
 
             // Slow gust envelope
             const gust = 0.6 + 0.25 * Math.sin(t * 0.31) + 0.15 * Math.cos(t * 0.19 + 1.1)
-            pushEvents = pushEvents.filter(p => now - p.time < 1200)
+            // Rough gusty mouse wind stream: layered sines at mismatched frequencies
+            const windStr = 0.85 + 0.07 * Math.sin(t * 4.3) + 0.04 * Math.cos(t * 9.1 + 1.7) + 0.04 * Math.sin(t * 17.3 - 0.9)
 
             const pos = geometry.attributes.position as THREE.BufferAttribute
             for (let i = 0; i < pos.count; i++) {
@@ -480,34 +482,38 @@ export function PhysicsCanvas() {
                 0.25 * Math.sin(along * 6.7 - t * 3.8 + across * 2.1)
               )
 
-              // Mouse pull — fabric lifts slightly toward viewer near cursor
-              let mdz = 0, mdx = 0, mdy = 0
-              const influenceRadius = Math.min(cW, cH) * 0.18
-              const sigma = influenceRadius * 0.4
+                // Mouse wind — tight jet blowing fabric away from viewer at cursor, concentric falloff
+              let mdz = 0
 
               if (mouseNDC) {
+                const sigma = Math.min(cW, cH) * 0.12
                 const mwx = mouseNDC.x * cW / 2
                 const mwy = mouseNDC.y * cH / 2
                 const ddx = ox - mwx, ddy = oy - mwy
                 const g = Math.exp(-(ddx * ddx + ddy * ddy) / (2 * sigma * sigma))
-                mdz += maxZ * 0.5 * g
-                mdx -= ddx * 0.08 * g
-                mdy -= ddy * 0.08 * g
+                mdz -= maxZ * 6.4 * windStr * g
               }
 
-              // Push impulse on click — decays over ~1s
-              for (const p of pushEvents) {
-                const elapsed = (now - p.time) / 1000
-                const pdx = ox - p.wx, pdy = oy - p.wy
-                const g = Math.exp(-(pdx * pdx + pdy * pdy) / (2 * sigma * sigma))
-                mdz -= maxZ * 1.8 * Math.exp(-4 * elapsed) * g
-              }
-
-              pos.setXYZ(i, ox + mdx, oy + dy * gust + mdy, dz * gust + mdz)
+              pos.setXYZ(i, ox, oy + dy * gust, dz * gust + mdz)
             }
             pos.needsUpdate = true
             geometry.computeVertexNormals()
             renderer.render(scene, camera)
+
+            if (windBallVisible && mouseNDC) {
+              const sigma = Math.min(cW, cH) * 0.12
+              const ballR = sigma * (1.5 + 0.5 * windStr)
+              const cx = (mouseNDC.x + 1) / 2 * cW
+              const cy = (1 - mouseNDC.y) / 2 * cH
+              windBall.style.display = 'block'
+              windBall.style.width = `${ballR * 2}px`
+              windBall.style.height = `${ballR * 2}px`
+              windBall.style.left = `${cx - ballR}px`
+              windBall.style.top = `${cy - ballR}px`
+              windBall.style.opacity = String(0.4 + 0.6 * windStr)
+            } else if (!windBallVisible) {
+              windBall.style.display = 'none'
+            }
           }
           rafId = requestAnimationFrame(draw)
           return
@@ -626,6 +632,10 @@ export function PhysicsCanvas() {
     // Triple-M toggle (flag mode)
     let mCount = 0
     let mTimer = 0
+    // Triple-G toggle (wind ball visibility)
+    let gCount = 0
+    let gTimer = 0
+    let windBallVisible = false
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === '0') {
         zeroCount++
@@ -649,6 +659,15 @@ export function PhysicsCanvas() {
           gravityDirection = (gravityDirection + 1) % 4
           setGravity?.(gravityDirection)
         }
+      } else if (e.key === 'g' || e.key === 'G') {
+        gCount++
+        clearTimeout(gTimer)
+        gTimer = window.setTimeout(() => { gCount = 0 }, 500)
+        if (gCount >= 3) {
+          gCount = 0
+          windBallVisible = !windBallVisible
+          if (!windBallVisible) windBall.style.display = 'none'
+        }
       } else if (e.key === 'm' || e.key === 'M') {
         mCount++
         clearTimeout(mTimer)
@@ -658,6 +677,7 @@ export function PhysicsCanvas() {
           flagModeActive = !flagModeActive
           canvas.style.display = flagModeActive ? 'none' : 'block'
           webglCanvas.style.display = flagModeActive ? 'block' : 'none'
+          windBall.style.display = 'none'
           if (!flagModeActive) {
             threeSetup?.renderer.dispose()
             threeSetup = null
@@ -671,24 +691,17 @@ export function PhysicsCanvas() {
       const r = webglCanvas.getBoundingClientRect()
       return { x: ((clientX - r.left) / r.width) * 2 - 1, y: -((clientY - r.top) / r.height) * 2 + 1 }
     }
-    const onFlagMouseMove  = (e: MouseEvent) => { if (mouseDown) mouseNDC = toNDC(e.clientX, e.clientY) }
+    const onFlagMouseMove  = (e: MouseEvent) => { mouseNDC = toNDC(e.clientX, e.clientY) }
     const onFlagMouseLeave = () => { mouseNDC = null; mouseDown = false }
-    const onFlagMouseDown  = (e: MouseEvent) => {
-      mouseDown = true
-      mouseNDC = toNDC(e.clientX, e.clientY)
-      const ndc = toNDC(e.clientX, e.clientY)
-      pushEvents.push({ wx: ndc.x * webglCanvas.clientWidth / 2, wy: ndc.y * webglCanvas.clientHeight / 2, time: performance.now() })
-    }
-    const onFlagMouseUp    = () => { mouseDown = false; mouseNDC = null }
+    const onFlagMouseDown  = (e: MouseEvent) => { mouseDown = true; mouseNDC = toNDC(e.clientX, e.clientY) }
+    const onFlagMouseUp    = () => { mouseDown = false }
     const onFlagTouchMove  = (e: TouchEvent) => {
       if (e.touches.length) mouseNDC = toNDC(e.touches[0].clientX, e.touches[0].clientY)
     }
     const onFlagTouchEnd   = () => { mouseNDC = null }
     const onFlagTouchStart = (e: TouchEvent) => {
       if (!e.touches.length) return
-      const ndc = toNDC(e.touches[0].clientX, e.touches[0].clientY)
-      mouseNDC = ndc
-      pushEvents.push({ wx: ndc.x * webglCanvas.clientWidth / 2, wy: ndc.y * webglCanvas.clientHeight / 2, time: performance.now() })
+      mouseNDC = toNDC(e.touches[0].clientX, e.touches[0].clientY)
     }
     webglCanvas.addEventListener('mousemove',  onFlagMouseMove)
     webglCanvas.addEventListener('mouseleave', onFlagMouseLeave)
@@ -723,6 +736,14 @@ export function PhysicsCanvas() {
     <>
       <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default', animation: 'blurInHeavy 0.8s ease-out both' }} />
       <canvas ref={webglCanvasRef} style={{ position: 'fixed', inset: 0, display: 'none' }} />
+      <div ref={windBallRef} style={{
+        display: 'none',
+        position: 'fixed',
+        borderRadius: '50%',
+        pointerEvents: 'none',
+        background: 'radial-gradient(circle, rgba(57,255,20,0.22) 0%, rgba(57,255,20,0.08) 45%, rgba(57,255,20,0) 100%)',
+        boxShadow: '0 0 32px 8px rgba(57,255,20,0.15)',
+      }} />
     </>
   )
 }
