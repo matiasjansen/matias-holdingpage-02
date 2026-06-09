@@ -5,6 +5,13 @@
   font-style: normal;
 }
 
+@media (prefers-color-scheme: dark) {
+  html { background-color: var(--surface-dark); }
+}
+@media (prefers-color-scheme: light), (prefers-color-scheme: no-preference) {
+  html { background-color: var(--surface-light); }
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {

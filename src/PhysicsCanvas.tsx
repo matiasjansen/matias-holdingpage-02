@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import * as THREE from 'three'
 import RAPIER from '@dimforge/rapier2d-compat'
 import opentype from 'opentype.js'
 import { type Theme, systemMode, themeFor } from './colors'
@@ -99,13 +100,18 @@ interface Entry {
   path2d: Path2D
   renderOffset: Pt
   trail: TrailSample[]
+  advance: number
+  flagX: number
+  flagY: number
 }
 
 export function PhysicsCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const webglCanvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current!
+    const webglCanvas = webglCanvasRef.current!
     const ctx = canvas.getContext('2d')!
     const dpr = window.devicePixelRatio ?? 1
     const W = window.innerWidth
@@ -119,6 +125,21 @@ export function PhysicsCanvas() {
     let rafId = 0
     let alive = true
     let theme: Theme = themeFor(systemMode())
+    let flagModeActive = false
+    // Continuous rotation: π/2 every 5s = π/10 rad/s — no stepping, no phase shock
+    const WIND_RATE = Math.PI / 10
+    let mouseNDC: { x: number; y: number } | null = null
+    let mouseDown = false
+    let pushEvents: { wx: number; wy: number; time: number }[] = []
+
+    let threeSetup: {
+      renderer: THREE.WebGLRenderer
+      scene: THREE.Scene
+      camera: THREE.PerspectiveCamera
+      geometry: THREE.PlaneGeometry
+      texture: THREE.CanvasTexture
+      origPositions: Float32Array
+    } | null = null
     canvas.style.backgroundColor = theme.surface
     let gravityDirection = 0 // 0=down, 1=right, 2=up, 3=left
     let setGravity: ((dir: number) => void) | undefined
@@ -173,8 +194,8 @@ export function PhysicsCanvas() {
         if (newSize !== currentLetterSize) {
           currentLetterSize = newSize
           spawnLetters(currentLetterSize, cW, cH)
-
         }
+        computeFlagLayout(cW, cH, currentLetterSize)
       }
 
       let resizeTimer = 0
@@ -226,11 +247,99 @@ export function PhysicsCanvas() {
           hull.setRestitution(0.8).setFriction(0.6)
           world.createCollider(hull, body)
 
-          entries.push({ body, path2d: new Path2D(path.toPathData(4)), renderOffset, trail: [] })
+          const advance = (glyph.advanceWidth ?? 0) * scale
+          entries.push({ body, path2d: new Path2D(path.toPathData(4)), renderOffset, trail: [], advance, flagX: 0, flagY: 0 })
         }
       }
 
+      // Row lengths matching buildLetters: 'Matias'=6, 'Jansen,'=7, 'Designer'=8
+      const rowLengths = [6, 7, 8]
+
+      function computeFlagLayout(width: number, height: number, size: number) {
+        const lineHeight = size * 1.2
+        let idx = 0
+        rowLengths.forEach((rowLen, ri) => {
+          let rowWidth = 0
+          for (let i = 0; i < rowLen; i++) rowWidth += entries[idx + i].advance
+          let x = (width - rowWidth) / 2
+          const y = height / 2 + (ri - 1) * lineHeight
+          for (let i = 0; i < rowLen; i++) {
+            entries[idx + i].flagX = x
+            entries[idx + i].flagY = y
+            x += entries[idx + i].advance
+          }
+          idx += rowLen
+        })
+      }
+
+      const COLS = 20
+
+
+      function buildFlagTexture(): HTMLCanvasElement {
+        const dpr = window.devicePixelRatio ?? 1
+        const tileW = cW / COLS
+        const tileH = tileW
+        const ROWS = Math.ceil(cH / tileH)
+        const scale = (tileH * 0.3) / currentLetterSize
+
+        const tc = document.createElement('canvas')
+        tc.width = Math.ceil(cW * dpr)
+        tc.height = Math.ceil(ROWS * tileH * dpr)
+        const tctx = tc.getContext('2d')!
+        tctx.scale(dpr, dpr)
+        // Transparent background — only letters and gridlines are drawn
+        tctx.fillStyle = theme.onSurface
+        for (let row = 0; row < ROWS; row++) {
+          for (let col = 0; col < COLS; col++) {
+            const idx = ((row * COLS + col) % entries.length + entries.length) % entries.length
+            const { path2d, renderOffset } = entries[idx]
+            tctx.save()
+            tctx.translate(col * tileW + tileW / 2, row * tileH + tileH / 2)
+            tctx.scale(scale, scale)
+            tctx.translate(-renderOffset.x, -renderOffset.y)
+            tctx.fill(path2d, 'evenodd')
+            tctx.restore()
+          }
+        }
+        // gridlines hidden for now
+        return tc
+      }
+
+      function initThreeFlag() {
+        threeSetup?.renderer.dispose()
+
+        const tileW = cW / COLS
+        const ROWS = Math.ceil(cH / tileW)
+
+        const renderer = new THREE.WebGLRenderer({ canvas: webglCanvas, antialias: true })
+        renderer.setSize(cW, cH)
+        renderer.setPixelRatio(window.devicePixelRatio ?? 1)
+        renderer.setClearColor(new THREE.Color(theme.surface))
+
+        const scene = new THREE.Scene()
+
+        const fov = 45
+        const dist = (cH / 2) / Math.tan((fov / 2) * Math.PI / 180)
+        const camera = new THREE.PerspectiveCamera(fov, cW / cH, 1, dist * 10)
+        camera.position.set(0, 0, dist)
+        camera.lookAt(0, 0, 0)
+
+        const texCanvas = buildFlagTexture()
+        const texture = new THREE.CanvasTexture(texCanvas)
+        texture.colorSpace = THREE.SRGBColorSpace
+
+        const geometry = new THREE.PlaneGeometry(cW, cH, COLS * 4, ROWS * 4)
+        const origPositions = (geometry.attributes.position.array as Float32Array).slice()
+        const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true })
+        const mesh = new THREE.Mesh(geometry, material)
+        mesh.rotation.y = 0
+        scene.add(mesh)
+
+        threeSetup = { renderer, scene, camera, geometry, texture, origPositions }
+      }
+
       spawnLetters(currentLetterSize, W, H)
+      computeFlagLayout(W, H, currentLetterSize)
 
       let draggedBody: RAPIER.RigidBody | null = null
       let dragOffsetX = 0, dragOffsetY = 0
@@ -328,51 +437,129 @@ export function PhysicsCanvas() {
         const trailDuration = isMobile ? 200 : 400
         const trailSubsteps = isMobile ? 1 : 3
 
+        if (flagModeActive) {
+          // Three.js renders to its own canvas — just update wave vertices each frame
+          if (!threeSetup) initThreeFlag()
+          if (threeSetup) {
+            const { renderer, scene, camera, geometry, origPositions } = threeSetup
+            const t = now / 1000
+
+            const windAngle = -t * WIND_RATE
+            const cosW = Math.cos(windAngle), sinW = Math.sin(windAngle)
+
+            const maxZ = cW * 0.14
+            const maxY = cH * 0.07
+
+            // Slow gust envelope
+            const gust = 0.6 + 0.25 * Math.sin(t * 0.31) + 0.15 * Math.cos(t * 0.19 + 1.1)
+            pushEvents = pushEvents.filter(p => now - p.time < 1200)
+
+            const pos = geometry.attributes.position as THREE.BufferAttribute
+            for (let i = 0; i < pos.count; i++) {
+              const ox = origPositions[i * 3]
+              const oy = origPositions[i * 3 + 1]
+              const nx = (ox + cW / 2) / cW   // 0–1 left to right
+              const ny = (oy + cH / 2) / cH   // 0–1 top to bottom
+
+              // Project position onto wind direction and perpendicular
+              const along = nx * cosW + ny * sinW          // primary wave axis
+              const across = nx * -sinW + ny * cosW        // perpendicular axis
+
+              // Z wave along wind direction with cross-ripples
+              const dz = maxZ * (
+                Math.sin(along * 3.8 - t * 2.6) +
+                0.30 * Math.sin(along * 8.3 - t * 5.1 + across * 2.4) +
+                0.20 * Math.sin(across * 4.1 - t * 3.2 + along * 1.7) +
+                0.15 * Math.sin(along * 13.1 - t * 7.7 + across * 4.9)
+              )
+
+              // Y flutter
+              const dy = maxY * (
+                Math.sin(across * 2.9 - t * 1.9 + along * Math.PI) +
+                0.40 * Math.sin(along * 3.7 - t * 2.3 + across * 1.8) +
+                0.25 * Math.sin(along * 6.7 - t * 3.8 + across * 2.1)
+              )
+
+              // Mouse pull — fabric lifts slightly toward viewer near cursor
+              let mdz = 0, mdx = 0, mdy = 0
+              const influenceRadius = Math.min(cW, cH) * 0.18
+              const sigma = influenceRadius * 0.4
+
+              if (mouseNDC) {
+                const mwx = mouseNDC.x * cW / 2
+                const mwy = mouseNDC.y * cH / 2
+                const ddx = ox - mwx, ddy = oy - mwy
+                const g = Math.exp(-(ddx * ddx + ddy * ddy) / (2 * sigma * sigma))
+                mdz += maxZ * 0.5 * g
+                mdx -= ddx * 0.08 * g
+                mdy -= ddy * 0.08 * g
+              }
+
+              // Push impulse on click — decays over ~1s
+              for (const p of pushEvents) {
+                const elapsed = (now - p.time) / 1000
+                const pdx = ox - p.wx, pdy = oy - p.wy
+                const g = Math.exp(-(pdx * pdx + pdy * pdy) / (2 * sigma * sigma))
+                mdz -= maxZ * 1.8 * Math.exp(-4 * elapsed) * g
+              }
+
+              pos.setXYZ(i, ox + mdx, oy + dy * gust + mdy, dz * gust + mdz)
+            }
+            pos.needsUpdate = true
+            geometry.computeVertexNormals()
+            renderer.render(scene, camera)
+          }
+          rafId = requestAnimationFrame(draw)
+          return
+        }
+
         ctx.clearRect(0, 0, cW, cH)
 
-        for (const entry of entries) {
-          const { body, path2d, renderOffset, trail } = entry
-          const pos = body.translation()
-          const angle = body.rotation()
+        {
+          for (const entry of entries) {
+            const { body, path2d, renderOffset, trail } = entry
+            const pos = body.translation()
+            const angle = body.rotation()
 
-          const prev = trail[trail.length - 1]
-          if (prev) {
-            let da = angle - prev.angle
-            if (da > Math.PI) da -= 2 * Math.PI
-            if (da < -Math.PI) da += 2 * Math.PI
-            for (let s = 1; s <= trailSubsteps; s++) {
-              const t = s / (trailSubsteps + 1)
-              trail.push({
-                x: prev.x + (pos.x - prev.x) * t,
-                y: prev.y + (pos.y - prev.y) * t,
-                angle: prev.angle + da * t,
-                timestamp: prev.timestamp + (now - prev.timestamp) * t,
-              })
+            const prev = trail[trail.length - 1]
+            if (prev) {
+              let da = angle - prev.angle
+              if (da > Math.PI) da -= 2 * Math.PI
+              if (da < -Math.PI) da += 2 * Math.PI
+              for (let s = 1; s <= trailSubsteps; s++) {
+                const t = s / (trailSubsteps + 1)
+                trail.push({
+                  x: prev.x + (pos.x - prev.x) * t,
+                  y: prev.y + (pos.y - prev.y) * t,
+                  angle: prev.angle + da * t,
+                  timestamp: prev.timestamp + (now - prev.timestamp) * t,
+                })
+              }
             }
-          }
-          trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
-          while (trail.length > 0 && now - trail[0].timestamp > trailDuration) trail.shift()
+            trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
+            while (trail.length > 0 && now - trail[0].timestamp > trailDuration) trail.shift()
 
-          for (let i = 0; i < trail.length - 1; i++) {
-            const age = now - trail[i].timestamp
-            const alpha = (1 - age / trailDuration) * 0.35
+            for (let i = 0; i < trail.length - 1; i++) {
+              const age = now - trail[i].timestamp
+              const alpha = (1 - age / trailDuration) * 0.35
+              ctx.save()
+              ctx.globalAlpha = alpha
+              ctx.translate(trail[i].x, trail[i].y)
+              ctx.rotate(trail[i].angle)
+              ctx.translate(-renderOffset.x, -renderOffset.y)
+              ctx.fillStyle = theme.onSurface
+              ctx.fill(path2d, 'evenodd')
+              ctx.restore()
+            }
+
             ctx.save()
-            ctx.globalAlpha = alpha
-            ctx.translate(trail[i].x, trail[i].y)
-            ctx.rotate(trail[i].angle)
+            ctx.translate(pos.x, pos.y)
+            ctx.rotate(angle)
             ctx.translate(-renderOffset.x, -renderOffset.y)
             ctx.fillStyle = theme.onSurface
             ctx.fill(path2d, 'evenodd')
             ctx.restore()
           }
-
-          ctx.save()
-          ctx.translate(pos.x, pos.y)
-          ctx.rotate(angle)
-          ctx.translate(-renderOffset.x, -renderOffset.y)
-          ctx.fillStyle = theme.onSurface
-          ctx.fill(path2d, 'evenodd')
-          ctx.restore()
         }
 
         // Analog clock (hidden for now)
@@ -425,6 +612,8 @@ export function PhysicsCanvas() {
     const onSchemeChange = () => {
       theme = themeFor(systemMode())
       canvas.style.backgroundColor = theme.surface
+      threeSetup?.renderer.dispose()
+      threeSetup = null
     }
     mq.addEventListener('change', onSchemeChange)
 
@@ -434,6 +623,9 @@ export function PhysicsCanvas() {
     // Triple-9 secret toggle (rotate gravity)
     let nineCount = 0
     let nineTimer = 0
+    // Triple-M toggle (flag mode)
+    let mCount = 0
+    let mTimer = 0
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === '0') {
         zeroCount++
@@ -444,6 +636,8 @@ export function PhysicsCanvas() {
           const newMode = theme === themeFor('dark') ? 'light' : 'dark'
           theme = themeFor(newMode)
           canvas.style.backgroundColor = theme.surface
+          threeSetup?.renderer.dispose()
+          threeSetup = null
           window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
         }
       } else if (e.key === '9') {
@@ -455,9 +649,54 @@ export function PhysicsCanvas() {
           gravityDirection = (gravityDirection + 1) % 4
           setGravity?.(gravityDirection)
         }
+      } else if (e.key === 'm' || e.key === 'M') {
+        mCount++
+        clearTimeout(mTimer)
+        mTimer = window.setTimeout(() => { mCount = 0 }, 500)
+        if (mCount >= 3) {
+          mCount = 0
+          flagModeActive = !flagModeActive
+          canvas.style.display = flagModeActive ? 'none' : 'block'
+          webglCanvas.style.display = flagModeActive ? 'block' : 'none'
+          if (!flagModeActive) {
+            threeSetup?.renderer.dispose()
+            threeSetup = null
+          }
+        }
       }
     }
     document.addEventListener('keydown', onKeyDown)
+
+    const toNDC = (clientX: number, clientY: number) => {
+      const r = webglCanvas.getBoundingClientRect()
+      return { x: ((clientX - r.left) / r.width) * 2 - 1, y: -((clientY - r.top) / r.height) * 2 + 1 }
+    }
+    const onFlagMouseMove  = (e: MouseEvent) => { if (mouseDown) mouseNDC = toNDC(e.clientX, e.clientY) }
+    const onFlagMouseLeave = () => { mouseNDC = null; mouseDown = false }
+    const onFlagMouseDown  = (e: MouseEvent) => {
+      mouseDown = true
+      mouseNDC = toNDC(e.clientX, e.clientY)
+      const ndc = toNDC(e.clientX, e.clientY)
+      pushEvents.push({ wx: ndc.x * webglCanvas.clientWidth / 2, wy: ndc.y * webglCanvas.clientHeight / 2, time: performance.now() })
+    }
+    const onFlagMouseUp    = () => { mouseDown = false; mouseNDC = null }
+    const onFlagTouchMove  = (e: TouchEvent) => {
+      if (e.touches.length) mouseNDC = toNDC(e.touches[0].clientX, e.touches[0].clientY)
+    }
+    const onFlagTouchEnd   = () => { mouseNDC = null }
+    const onFlagTouchStart = (e: TouchEvent) => {
+      if (!e.touches.length) return
+      const ndc = toNDC(e.touches[0].clientX, e.touches[0].clientY)
+      mouseNDC = ndc
+      pushEvents.push({ wx: ndc.x * webglCanvas.clientWidth / 2, wy: ndc.y * webglCanvas.clientHeight / 2, time: performance.now() })
+    }
+    webglCanvas.addEventListener('mousemove',  onFlagMouseMove)
+    webglCanvas.addEventListener('mouseleave', onFlagMouseLeave)
+    webglCanvas.addEventListener('mousedown',  onFlagMouseDown)
+    document.addEventListener('mouseup',       onFlagMouseUp)
+    webglCanvas.addEventListener('touchmove',  onFlagTouchMove)
+    webglCanvas.addEventListener('touchend',   onFlagTouchEnd)
+    webglCanvas.addEventListener('touchstart', onFlagTouchStart)
 
     let resizeObserver: ResizeObserver | undefined
     let cleanupDrag: (() => void) | undefined
@@ -469,8 +708,21 @@ export function PhysicsCanvas() {
       cleanupDrag?.()
       mq.removeEventListener('change', onSchemeChange)
       document.removeEventListener('keydown', onKeyDown)
+      threeSetup?.renderer.dispose()
+      webglCanvas.removeEventListener('mousemove',  onFlagMouseMove)
+      webglCanvas.removeEventListener('mouseleave', onFlagMouseLeave)
+      webglCanvas.removeEventListener('mousedown',  onFlagMouseDown)
+      document.removeEventListener('mouseup',       onFlagMouseUp)
+      webglCanvas.removeEventListener('touchmove',  onFlagTouchMove)
+      webglCanvas.removeEventListener('touchend',   onFlagTouchEnd)
+      webglCanvas.removeEventListener('touchstart', onFlagTouchStart)
     }
   }, [])
 
-  return <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default', animation: 'blurInHeavy 0.8s ease-out both' }} />
+  return (
+    <>
+      <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default', animation: 'blurInHeavy 0.8s ease-out both' }} />
+      <canvas ref={webglCanvasRef} style={{ position: 'fixed', inset: 0, display: 'none' }} />
+    </>
+  )
 }
