@@ -1,11 +1,11 @@
 import { typographyPrimitives, breakpoints } from './colors'
 
 export const letterSizeByBreakpoint = {
-  [breakpoints.xs]: typographyPrimitives.fontSize96,
-  [breakpoints.sm]: typographyPrimitives.fontSize128,
-  [breakpoints.md]: typographyPrimitives.fontSize160,
-  [breakpoints.lg]: typographyPrimitives.fontSize224,
-  [breakpoints.xl]: typographyPrimitives.fontSize288,
+  [breakpoints.xs]: typographyPrimitives.fontSize128,
+  [breakpoints.sm]: typographyPrimitives.fontSize160,
+  [breakpoints.md]: typographyPrimitives.fontSize224,
+  [breakpoints.lg]: typographyPrimitives.fontSize288,
+  [breakpoints.xl]: typographyPrimitives.fontSize320,
   [breakpoints['2xl']]: typographyPrimitives.fontSize340,
   [breakpoints['3xl']]: typographyPrimitives.fontSize360,
 } as const

@@ -6,6 +6,17 @@ html, body, #root {
   overflow: hidden;
 }
 
+@keyframes blurIn {
+  from { opacity: 0; filter: blur(10px); }
+  to   { opacity: 1; filter: blur(0px); }
+}
+
+@keyframes blurInHeavy {
+  from { opacity: 0; filter: blur(40px); }
+  to   { opacity: 1; filter: blur(0px); }
+}
+
+
 .clock {
   position: fixed;
   top: 70px;

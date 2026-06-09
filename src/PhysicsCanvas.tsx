@@ -96,7 +96,7 @@ interface TrailSample {
 
 interface Entry {
   body: RAPIER.RigidBody
-  svgPath: string
+  path2d: Path2D
   renderOffset: Pt
   trail: TrailSample[]
 }
@@ -173,6 +173,7 @@ export function PhysicsCanvas() {
         if (newSize !== currentLetterSize) {
           currentLetterSize = newSize
           spawnLetters(currentLetterSize, cW, cH)
+          spawnTime = performance.now()
         }
       }
 
@@ -225,7 +226,7 @@ export function PhysicsCanvas() {
           hull.setRestitution(0.8).setFriction(0.6)
           world.createCollider(hull, body)
 
-          entries.push({ body, svgPath: path.toPathData(4), renderOffset, trail: [] })
+          entries.push({ body, path2d: new Path2D(path.toPathData(4)), renderOffset, trail: [] })
         }
       }
 
@@ -328,7 +329,7 @@ export function PhysicsCanvas() {
         ctx.clearRect(0, 0, cW, cH)
 
         for (const entry of entries) {
-          const { body, svgPath, renderOffset, trail } = entry
+          const { body, path2d, renderOffset, trail } = entry
           const pos = body.translation()
           const angle = body.rotation()
 
@@ -350,8 +351,6 @@ export function PhysicsCanvas() {
           }
           trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
           while (trail.length > 0 && now - trail[0].timestamp > trailDuration) trail.shift()
-
-          const path2d = new Path2D(svgPath)
 
           for (let i = 0; i < trail.length - 1; i++) {
             const age = now - trail[i].timestamp
@@ -472,5 +471,5 @@ export function PhysicsCanvas() {
     }
   }, [])
 
-  return <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default' }} />
+  return <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default', animation: 'blurInHeavy 0.8s ease-out both' }} />
 }
