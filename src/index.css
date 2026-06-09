@@ -1,3 +1,10 @@
+@font-face {
+  font-family: "OtherSans";
+  src: url('/fonts/OtherSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
@@ -23,7 +30,7 @@ html, body, #root {
   left: 24px;
   font-size: 24px;
   line-height: 32px;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-family: "OtherSans", sans-serif;
   user-select: none;
   z-index: 1000;
   white-space: pre;
@@ -35,7 +42,7 @@ html, body, #root {
   left: 24px;
   font-size: 24px;
   line-height: 32px;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-family: "OtherSans", sans-serif;
   user-select: none;
   z-index: 1000;
 }

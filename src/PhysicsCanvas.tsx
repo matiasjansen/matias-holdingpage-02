@@ -4,7 +4,7 @@ import opentype from 'opentype.js'
 import { type Theme, systemMode, themeFor } from './colors'
 import { getLetterSize } from './responsiveTokens'
 
-const fontUrl = '/fonts/SF-Pro-Display-Regular.otf'
+const fontUrl = '/fonts/OtherSans-Regular.otf'
 
 interface LetterDef {
   char: string
