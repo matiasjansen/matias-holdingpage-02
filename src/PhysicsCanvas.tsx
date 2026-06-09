@@ -5,7 +5,7 @@ import opentype from 'opentype.js'
 import { type Theme, systemMode, themeFor } from './colors'
 import { getLetterSize } from './responsiveTokens'
 
-const fontUrl = '/fonts/OtherSans-Regular.otf'
+const fontUrl = '/fonts/OtherSans-Regular.woff'
 
 interface LetterDef {
   char: string
@@ -692,7 +692,15 @@ export function PhysicsCanvas() {
           mCount = 0
           flagModeActive = !flagModeActive
           canvas.style.display = flagModeActive ? 'none' : 'block'
-          webglCanvas.style.display = flagModeActive ? 'block' : 'none'
+          if (flagModeActive) {
+            webglCanvas.style.display = 'block'
+            webglCanvas.classList.remove('flag-enter')
+            void webglCanvas.offsetWidth // force reflow so animation re-triggers
+            webglCanvas.classList.add('flag-enter')
+          } else {
+            webglCanvas.style.display = 'none'
+            webglCanvas.classList.remove('flag-enter')
+          }
           windBall.style.display = 'none'
           if (!flagModeActive) {
             threeSetup?.renderer.dispose()

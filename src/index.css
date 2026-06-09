@@ -30,6 +30,10 @@ html, body, #root {
   to   { opacity: 1; filter: blur(0px); }
 }
 
+.flag-enter {
+  animation: blurInHeavy 0.8s ease-out both;
+}
+
 @media (hover: none) and (max-width: 767px) {
   @keyframes blurIn {
     from { opacity: 0; }
