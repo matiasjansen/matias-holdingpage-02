@@ -514,6 +514,7 @@ export function PhysicsCanvas() {
             }
             pos.needsUpdate = true
             geometry.computeVertexNormals()
+
             renderer.render(scene, camera)
 
             if (windBallVisible && smoothedNDC) {
