@@ -13,7 +13,7 @@ interface LetterDef {
 }
 
 function buildLetters(size: number): LetterDef[] {
-  const rows: string[] = ['MATIAS', 'JANSEN,', 'DESIGNER']
+  const rows: string[] = ['Matias', 'Jansen,', 'Designer']
   return rows.flatMap(word =>
     Array.from(word).map(char => ({ char, size }))
   )
@@ -98,6 +98,7 @@ interface TrailSample {
 interface Entry {
   body: RAPIER.RigidBody
   path2d: Path2D
+  upperPath2d: Path2D
   renderOffset: Pt
   trail: TrailSample[]
   advance: number
@@ -249,7 +250,9 @@ export function PhysicsCanvas() {
           world.createCollider(hull, body)
 
           const advance = (glyph.advanceWidth ?? 0) * scale
-          entries.push({ body, path2d: new Path2D(path.toPathData(4)), renderOffset, trail: [], advance, flagX: 0, flagY: 0 })
+          const upperGlyph = otFont.charToGlyph(letter.char.toUpperCase())
+          const upperPath = upperGlyph.getPath(0, 0, letter.size)
+          entries.push({ body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, trail: [], advance, flagX: 0, flagY: 0 })
         }
       }
 
@@ -293,12 +296,12 @@ export function PhysicsCanvas() {
         for (let row = 0; row < ROWS; row++) {
           for (let col = 0; col < COLS; col++) {
             const idx = ((row * COLS + col) % entries.length + entries.length) % entries.length
-            const { path2d, renderOffset } = entries[idx]
+            const { upperPath2d, renderOffset } = entries[idx]
             tctx.save()
             tctx.translate(col * tileW + tileW / 2, row * tileH + tileH / 2)
             tctx.scale(scale, scale)
             tctx.translate(-renderOffset.x, -renderOffset.y)
-            tctx.fill(path2d, 'evenodd')
+            tctx.fill(upperPath2d, 'evenodd')
             tctx.restore()
           }
         }
