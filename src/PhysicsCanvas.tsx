@@ -87,10 +87,18 @@ function simplify(pts: Pt[], minDist = 2): Pt[] {
   return out
 }
 
+interface TrailSample {
+  x: number
+  y: number
+  angle: number
+  timestamp: number
+}
+
 interface Entry {
   body: RAPIER.RigidBody
   svgPath: string
   renderOffset: Pt
+  trail: TrailSample[]
 }
 
 export function PhysicsCanvas() {
@@ -111,6 +119,7 @@ export function PhysicsCanvas() {
     let rafId = 0
     let alive = true
     let theme: Theme = themeFor(systemMode())
+    canvas.style.backgroundColor = theme.surface
     let gravityDirection = 0 // 0=down, 1=right, 2=up, 3=left
     let setGravity: ((dir: number) => void) | undefined
 
@@ -216,7 +225,7 @@ export function PhysicsCanvas() {
           hull.setRestitution(0.8).setFriction(0.6)
           world.createCollider(hull, body)
 
-          entries.push({ body, svgPath: path.toPathData(4), renderOffset })
+          entries.push({ body, svgPath: path.toPathData(4), renderOffset, trail: [] })
         }
       }
 
@@ -314,18 +323,52 @@ export function PhysicsCanvas() {
         }
         lastSecond = currentSecond
 
-        ctx.fillStyle = theme.trail
-        ctx.fillRect(0, 0, cW, cH)
+        const trailDuration = 400
 
-        for (const { body, svgPath, renderOffset } of entries) {
+        ctx.clearRect(0, 0, cW, cH)
+
+        for (const entry of entries) {
+          const { body, svgPath, renderOffset, trail } = entry
           const pos = body.translation()
           const angle = body.rotation()
+
+          // Push 4 samples per frame: 3 interpolated steps + current
+          const prev = trail[trail.length - 1]
+          if (prev) {
+            for (let s = 1; s <= 3; s++) {
+              const t = s / 4
+              trail.push({
+                x: prev.x + (pos.x - prev.x) * t,
+                y: prev.y + (pos.y - prev.y) * t,
+                angle: prev.angle + (angle - prev.angle) * t,
+                timestamp: prev.timestamp + (now - prev.timestamp) * t,
+              })
+            }
+          }
+          trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
+          while (trail.length > 0 && now - trail[0].timestamp > trailDuration) trail.shift()
+
+          const path2d = new Path2D(svgPath)
+
+          for (let i = 0; i < trail.length - 1; i++) {
+            const age = now - trail[i].timestamp
+            const alpha = (1 - age / trailDuration) * 0.35
+            ctx.save()
+            ctx.globalAlpha = alpha
+            ctx.translate(trail[i].x, trail[i].y)
+            ctx.rotate(trail[i].angle)
+            ctx.translate(-renderOffset.x, -renderOffset.y)
+            ctx.fillStyle = theme.onSurface
+            ctx.fill(path2d, 'evenodd')
+            ctx.restore()
+          }
+
           ctx.save()
           ctx.translate(pos.x, pos.y)
           ctx.rotate(angle)
           ctx.translate(-renderOffset.x, -renderOffset.y)
           ctx.fillStyle = theme.onSurface
-          ctx.fill(new Path2D(svgPath), 'evenodd')
+          ctx.fill(path2d, 'evenodd')
           ctx.restore()
         }
 
@@ -376,7 +419,10 @@ export function PhysicsCanvas() {
 
     // Sync with system color scheme
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onSchemeChange = () => { theme = themeFor(systemMode()) }
+    const onSchemeChange = () => {
+      theme = themeFor(systemMode())
+      canvas.style.backgroundColor = theme.surface
+    }
     mq.addEventListener('change', onSchemeChange)
 
     // Triple-0 secret toggle (dark/light)
@@ -394,6 +440,7 @@ export function PhysicsCanvas() {
           zeroCount = 0
           const newMode = theme === themeFor('dark') ? 'light' : 'dark'
           theme = themeFor(newMode)
+          canvas.style.backgroundColor = theme.surface
           window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
         }
       } else if (e.key === '9') {

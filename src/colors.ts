@@ -11,13 +11,6 @@ function hex(tone: number): string {
   return hexFromArgb(argb(tone))
 }
 
-function rgbaHct(hue: number, chroma: number, tone: number, alpha: number): string {
-  const v = Hct.from(hue, chroma, tone).toInt()
-  const r = (v >> 16) & 0xff
-  const g = (v >> 8) & 0xff
-  const b = v & 0xff
-  return `rgba(${r},${g},${b},${alpha})`
-}
 
 function hct(hue: number, chroma: number, tone: number): string {
   return hexFromArgb(Hct.from(hue, chroma, tone).toInt())
@@ -124,19 +117,16 @@ export type Breakpoint = keyof typeof breakpoints
 export interface Theme {
   surface:   string
   onSurface: string
-  trail: string   // surface color at low opacity for motion trail
 }
 
 export const dark: Theme = {
   surface:   primitives.neutralPurple5,
   onSurface: primitives.neutralPurple97,
-  trail:     rgbaHct(275, 12, 5, 0.12),
 }
 
 export const light: Theme = {
   surface:   primitives.neutralPurple97,
   onSurface: primitives.neutralPurple5,
-  trail:     rgbaHct(275, 12, 97, 0.12),
 }
 
 // --- System helpers ---
