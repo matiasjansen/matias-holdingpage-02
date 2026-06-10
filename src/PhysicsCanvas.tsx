@@ -148,6 +148,7 @@ export function PhysicsCanvas() {
     const WIND_RATE = Math.PI / 10
     let mouseNDC: { x: number; y: number } | null = null
     let smoothedNDC: { x: number; y: number } | null = null
+    let lastInputWasTouch = false
 
     let threeSetup: {
       renderer: THREE.WebGLRenderer
@@ -464,11 +465,11 @@ export function PhysicsCanvas() {
 
               // Mouse wind jet
               float mdz = 0.0;
-              if (uMouseActive > 0.5) {
+              {
                 float ddx = pos.x - uMouseX;
                 float ddy = pos.y - uMouseY;
                 float g = exp(-(ddx*ddx + ddy*ddy) / (2.0 * uMouseSigma * uMouseSigma));
-                mdz -= uMaxZ * 6.4 * uWindStr * uMouseBoost * g;
+                mdz -= uMaxZ * 6.4 * uWindStr * uMouseBoost * g * uMouseActive;
               }
 
               pos.z += dz * uGust + mdz;
@@ -635,10 +636,8 @@ export function PhysicsCanvas() {
             const ease = 1 - Math.pow(0.04, dt)
             if (mouseNDC) {
               if (!smoothedNDC) smoothedNDC = { x: mouseNDC.x, y: mouseNDC.y }
-              else {
-                smoothedNDC.x += (mouseNDC.x - smoothedNDC.x) * ease
-                smoothedNDC.y += (mouseNDC.y - smoothedNDC.y) * ease
-              }
+              smoothedNDC.x += (mouseNDC.x - smoothedNDC.x) * ease
+              smoothedNDC.y += (mouseNDC.y - smoothedNDC.y) * ease
             } else {
               smoothedNDC = null
             }
@@ -655,8 +654,15 @@ export function PhysicsCanvas() {
             mat.uniforms.uWindStr.value   = windStr
             threeSetup.dotMat.uniforms.uColor.value.set(theme.onSurfaceVariant)
 
-            const activeTarget = smoothedNDC ? 1 : 0
-            mat.uniforms.uMouseActive.value += (activeTarget - mat.uniforms.uMouseActive.value) * ease
+            const current = mat.uniforms.uMouseActive.value
+            if (smoothedNDC) {
+              mat.uniforms.uMouseActive.value = lastInputWasTouch
+                ? Math.min(1, current + 0.04)
+                : Math.min(1, current + (1 - current) * ease)
+            } else {
+              mat.uniforms.uMouseActive.value += (0 - current) * ease
+            }
+
             if (smoothedNDC) {
               mat.uniforms.uMouseX.value = smoothedNDC.x * cW / 2
               mat.uniforms.uMouseY.value = smoothedNDC.y * cH / 2
@@ -893,17 +899,18 @@ export function PhysicsCanvas() {
       const r = webglCanvas.getBoundingClientRect()
       return { x: ((clientX - r.left) / r.width) * 2 - 1, y: -((clientY - r.top) / r.height) * 2 + 1 }
     }
-    const onFlagMouseMove  = (e: MouseEvent) => { mouseNDC = toNDC(e.clientX, e.clientY) }
+    const onFlagMouseMove  = (e: MouseEvent) => { mouseNDC = toNDC(e.clientX, e.clientY); lastInputWasTouch = false }
     const onFlagMouseLeave = () => { mouseNDC = null }
     const onFlagMouseDown  = (e: MouseEvent) => { mouseNDC = toNDC(e.clientX, e.clientY) }
     const onFlagMouseUp    = () => { }
     const onFlagTouchMove  = (e: TouchEvent) => {
-      if (e.touches.length) mouseNDC = toNDC(e.touches[0].clientX, e.touches[0].clientY)
+      if (e.touches.length) { mouseNDC = toNDC(e.touches[0].clientX, e.touches[0].clientY); lastInputWasTouch = true }
     }
     const onFlagTouchEnd   = () => { mouseNDC = null }
     const onFlagTouchStart = (e: TouchEvent) => {
       if (!e.touches.length) return
       mouseNDC = toNDC(e.touches[0].clientX, e.touches[0].clientY)
+      lastInputWasTouch = true
     }
     webglCanvas.addEventListener('mousemove',  onFlagMouseMove)
     webglCanvas.addEventListener('mouseleave', onFlagMouseLeave)
