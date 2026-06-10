@@ -5,6 +5,13 @@ import { useEffect, useState } from 'react'
 const CHAR_STAGGER = 0.04
 const LINE_GAP = 0.1
 
+function clearCharAnim(e: React.AnimationEvent<HTMLSpanElement>) {
+  const el = e.currentTarget
+  el.style.animation = 'none'
+  el.style.opacity = '1'
+  el.style.filter = 'none'
+}
+
 function AnimatedLine({ text, startDelay }: { text: string; startDelay: number }) {
   return (
     <span style={{ display: 'block' }}>
@@ -15,6 +22,7 @@ function AnimatedLine({ text, startDelay }: { text: string; startDelay: number }
             display: 'inline-block',
             animation: `blurIn 0.5s ${startDelay + i * CHAR_STAGGER}s ease-out both`,
           }}
+          onAnimationEnd={clearCharAnim}
         >
           {char === ' ' ? ' ' : char}
         </span>
@@ -37,6 +45,7 @@ function SecondsDigits({ seconds, startDelay, charOffset }: { seconds: string; s
               display: 'inline-block',
               animation: `blurIn 0.5s ${startDelay + i * CHAR_STAGGER}s ease-out both`,
             }}
+            onAnimationEnd={clearCharAnim}
           >
             {char}
           </span>
@@ -66,6 +75,7 @@ function ClockTimeLine({ text, seconds, startDelay }: { text: string; seconds: s
             display: 'inline-block',
             animation: `blurIn 0.5s ${startDelay + i * CHAR_STAGGER}s ease-out both`,
           }}
+          onAnimationEnd={clearCharAnim}
         >
           {char === ' ' ? ' ' : char}
         </span>
@@ -76,7 +86,7 @@ function ClockTimeLine({ text, seconds, startDelay }: { text: string; seconds: s
     if (pi < parts.length - 1) {
       elements.push(
         <span key={`colon-${pi}`} style={{ display: 'inline-block', opacity: colonOpacity, transition: 'opacity 0.2s' }}>
-          <span style={{ display: 'inline-block', animation: `blurIn 0.5s ${startDelay + charOffset * CHAR_STAGGER}s ease-out both` }}>:</span>
+          <span style={{ display: 'inline-block', animation: `blurIn 0.5s ${startDelay + charOffset * CHAR_STAGGER}s ease-out both` }} onAnimationEnd={clearCharAnim}>:</span>
         </span>
       )
       charOffset++
@@ -87,7 +97,7 @@ function ClockTimeLine({ text, seconds, startDelay }: { text: string; seconds: s
   const secondsColonOffset = charOffset
   elements.push(
     <span key="colon-seconds" style={{ display: 'inline-block', opacity: colonOpacity, transition: 'opacity 0.2s' }}>
-      <span style={{ display: 'inline-block', animation: `blurIn 0.5s ${startDelay + secondsColonOffset * CHAR_STAGGER}s ease-out both` }}>:</span>
+      <span style={{ display: 'inline-block', animation: `blurIn 0.5s ${startDelay + secondsColonOffset * CHAR_STAGGER}s ease-out both` }} onAnimationEnd={clearCharAnim}>:</span>
     </span>
   )
   charOffset++

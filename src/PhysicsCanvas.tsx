@@ -943,7 +943,7 @@ export function PhysicsCanvas() {
 
   return (
     <>
-      <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default', animation: 'blurInHeavy 0.8s ease-out both' }} />
+      <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default', animation: 'blurInHeavy 0.8s ease-out both' }} onAnimationEnd={(e) => { (e.currentTarget as HTMLCanvasElement).style.animation = 'none' }} />
       <canvas ref={webglCanvasRef} style={{ position: 'fixed', inset: 0, display: 'none' }} />
       <div ref={windBallRef} style={{
         display: 'none',
