@@ -143,7 +143,7 @@ export function PhysicsCanvas() {
     let alive = true
     let theme: Theme = themeFor(systemMode())
     let buildGlyphCache: (() => void) | undefined
-    let flagModeActive = Math.random() < 0.5
+    let flagModeActive = false
     // Continuous rotation: π/2 every 5s = π/10 rad/s — no stepping, no phase shock
     const WIND_RATE = Math.PI / 10
     let mouseNDC: { x: number; y: number } | null = null
