@@ -128,12 +128,11 @@ export function PhysicsCanvas() {
     let rafId = 0
     let alive = true
     let theme: Theme = themeFor(systemMode())
-    let flagModeActive = false
+    let flagModeActive = Math.random() < 0.5
     // Continuous rotation: π/2 every 5s = π/10 rad/s — no stepping, no phase shock
     const WIND_RATE = Math.PI / 10
     let mouseNDC: { x: number; y: number } | null = null
     let smoothedNDC: { x: number; y: number } | null = null
-    let mouseDown = false
 
     let threeSetup: {
       renderer: THREE.WebGLRenderer
@@ -142,8 +141,13 @@ export function PhysicsCanvas() {
       geometry: THREE.PlaneGeometry
       texture: THREE.CanvasTexture
       origPositions: Float32Array
+      wireLines: THREE.Mesh
+      dots: THREE.Points
+      dotMat: THREE.ShaderMaterial
     } | null = null
     canvas.style.backgroundColor = theme.surface
+    canvas.style.display = flagModeActive ? 'none' : 'block'
+    webglCanvas.style.display = flagModeActive ? 'block' : 'none'
     let gravityDirection = 0 // 0=down, 1=right, 2=up, 3=left
     let setGravity: ((dir: number) => void) | undefined
 
@@ -277,7 +281,7 @@ export function PhysicsCanvas() {
         })
       }
 
-      const COLS = 20
+      const COLS = 40
 
 
       function buildFlagTexture(): HTMLCanvasElement {
@@ -332,6 +336,9 @@ export function PhysicsCanvas() {
         const texCanvas = buildFlagTexture()
         const texture = new THREE.CanvasTexture(texCanvas)
         texture.colorSpace = THREE.SRGBColorSpace
+        texture.minFilter = THREE.LinearMipmapLinearFilter
+        texture.magFilter = THREE.LinearFilter
+        texture.generateMipmaps = true
 
         const geometry = new THREE.PlaneGeometry(cW, cH, COLS * 8, ROWS * 8)
         const origPositions = new Float32Array(0) // unused — displacement is in GLSL
@@ -379,8 +386,7 @@ export function PhysicsCanvas() {
               float along  =  nx * cosW + ny * sinW;
               float across = -nx * sinW + ny * cosW;
 
-              // Pin left edge, free right edge
-              float pin = nx * nx;
+              float pin = 1.0;
 
               // Z ripples — 8 octaves from large waves to fine grain
               float dz = 0.0;
@@ -390,8 +396,12 @@ export function PhysicsCanvas() {
               dz += sin(along * 13.1 - uTime * 7.7 + across *  4.9)        * 0.15;
               dz += sin(along * 22.0 - uTime *11.0 + across *  7.3)        * 0.09;
               dz += sin(across*17.5  - uTime * 9.3 + along  *  5.8)        * 0.07;
-              dz += sin(along * 37.0 - uTime *19.1 + across * 13.2)        * 0.04;
-              dz += sin(across*29.0  - uTime *15.4 + along  *  9.7)        * 0.03;
+              dz += sin(along * 37.0 - uTime *19.1 + across * 13.2)        * 0.05;
+              dz += sin(across*29.0  - uTime *15.4 + along  *  9.7)        * 0.04;
+              dz += sin(along * 58.0 - uTime *27.3 + across * 21.0)        * 0.03;
+              dz += sin(across*47.0  - uTime *23.1 + along  * 16.4)        * 0.025;
+              dz += sin(along * 82.0 - uTime *38.7 + across * 31.5)        * 0.018;
+              dz += sin(across*71.0  - uTime *34.2 + along  * 24.8)        * 0.014;
               dz *= uMaxZ * pin;
 
               // Y flutter — 4 octaves
@@ -431,7 +441,35 @@ export function PhysicsCanvas() {
         const mesh = new THREE.Mesh(geometry, material)
         scene.add(mesh)
 
-        threeSetup = { renderer, scene, camera, geometry, texture, origPositions }
+        const dotMat = new THREE.ShaderMaterial({
+          uniforms: Object.assign(material.uniforms, { uColor: { value: new THREE.Color(theme.onSurfaceVariant) } }),
+          vertexShader: material.vertexShader.replace(
+            'gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);',
+            'gl_PointSize = 2.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);'
+          ),
+          fragmentShader: `
+            uniform vec3 uColor;
+            void main() { gl_FragColor = vec4(uColor, 0.6); }
+          `,
+          transparent: true,
+
+        })
+        const dots = new THREE.Points(geometry, dotMat)
+        dots.visible = true
+        scene.add(dots)
+
+        const wireMat = new THREE.ShaderMaterial({
+          uniforms: material.uniforms,
+          vertexShader: material.vertexShader,
+          fragmentShader: `void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, 0.35); }`,
+          wireframe: true,
+          transparent: true,
+        })
+        const wireLines = new THREE.Mesh(geometry, wireMat)
+        wireLines.visible = false
+        scene.add(wireLines)
+
+        threeSetup = { renderer, scene, camera, geometry, texture, origPositions, wireLines, dots, dotMat }
       }
 
       spawnLetters(currentLetterSize, W, H)
@@ -537,14 +575,10 @@ export function PhysicsCanvas() {
           // Three.js renders to its own canvas — just update wave vertices each frame
           if (!threeSetup) initThreeFlag()
           if (threeSetup) {
-            const { renderer, scene, camera, geometry, origPositions } = threeSetup
+            const { renderer, scene, camera } = threeSetup
             const t = now / 1000
 
             const windAngle = -t * WIND_RATE
-            const cosW = Math.cos(windAngle), sinW = Math.sin(windAngle)
-
-            const maxZ = cW * 0.14
-            const maxY = cH * 0.07
 
             // Ease smoothedNDC toward mouseNDC each frame (dt-independent lerp)
             const ease = 1 - Math.pow(0.04, dt)
@@ -568,6 +602,7 @@ export function PhysicsCanvas() {
             mat.uniforms.uGust.value      = gust
             mat.uniforms.uWindAngle.value = windAngle
             mat.uniforms.uWindStr.value   = windStr
+            threeSetup.dotMat.uniforms.uColor.value.set(theme.onSurfaceVariant)
 
             if (smoothedNDC) {
               mat.uniforms.uMouseActive.value = 1
@@ -715,6 +750,14 @@ export function PhysicsCanvas() {
     let gCount = 0
     let gTimer = 0
     let windBallVisible = false
+    // Triple-W toggle (wireframe)
+    let wCount = 0
+    let wTimer = 0
+    let wireframeActive = false
+    // Triple-D toggle (dots)
+    let dCount = 0
+    let dTimer = 0
+    let dotsActive = true
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === '0') {
         zeroCount++
@@ -746,6 +789,26 @@ export function PhysicsCanvas() {
           gCount = 0
           windBallVisible = !windBallVisible
           if (!windBallVisible) windBall.style.display = 'none'
+        }
+      } else if (e.key === 'w' || e.key === 'W') {
+        wCount++
+        clearTimeout(wTimer)
+        wTimer = window.setTimeout(() => { wCount = 0 }, 500)
+        if (wCount >= 3) {
+          wCount = 0
+          wireframeActive = !wireframeActive
+          if (threeSetup) {
+            threeSetup.wireLines.visible = wireframeActive
+          }
+        }
+      } else if (e.key === 'd' || e.key === 'D') {
+        dCount++
+        clearTimeout(dTimer)
+        dTimer = window.setTimeout(() => { dCount = 0 }, 500)
+        if (dCount >= 3) {
+          dCount = 0
+          dotsActive = !dotsActive
+          if (threeSetup) threeSetup.dots.visible = dotsActive
         }
       } else if (e.key === 'm' || e.key === 'M') {
         mCount++
@@ -779,9 +842,9 @@ export function PhysicsCanvas() {
       return { x: ((clientX - r.left) / r.width) * 2 - 1, y: -((clientY - r.top) / r.height) * 2 + 1 }
     }
     const onFlagMouseMove  = (e: MouseEvent) => { mouseNDC = toNDC(e.clientX, e.clientY) }
-    const onFlagMouseLeave = () => { mouseNDC = null; mouseDown = false }
-    const onFlagMouseDown  = (e: MouseEvent) => { mouseDown = true; mouseNDC = toNDC(e.clientX, e.clientY) }
-    const onFlagMouseUp    = () => { mouseDown = false }
+    const onFlagMouseLeave = () => { mouseNDC = null }
+    const onFlagMouseDown  = (e: MouseEvent) => { mouseNDC = toNDC(e.clientX, e.clientY) }
+    const onFlagMouseUp    = () => { }
     const onFlagTouchMove  = (e: TouchEvent) => {
       if (e.touches.length) mouseNDC = toNDC(e.touches[0].clientX, e.touches[0].clientY)
     }

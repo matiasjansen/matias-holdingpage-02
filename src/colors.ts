@@ -46,7 +46,9 @@ export const primitives = {
   neutralPurple60:  hct(275, 5, 60),
   neutralPurple65:  hct(275, 5, 65),
   neutralPurple70:  hct(275, 5, 70),
+  neutralPurple67:  hct(275, 5, 67),
   neutralPurple75:  hct(275, 5, 75),
+  neutralPurple77:  hct(275, 5, 77),
   neutralPurple80:  hct(275, 5, 80),
   neutralPurple85:  hct(275, 5, 85),
   neutralPurple87:  hct(275, 5, 87),
@@ -120,21 +122,24 @@ export type Breakpoint = keyof typeof breakpoints
 // --- Tokens ---
 
 export interface Theme {
-  surface:   string
-  onSurface: string
-  grid:      string
+  surface:          string
+  onSurface:        string
+  onSurfaceVariant: string
+  grid:             string
 }
 
 export const dark: Theme = {
-  surface:   primitives.neutralPurple5,
-  onSurface: primitives.neutralPurple97,
-  grid:      primitives.neutralPurple10,
+  surface:          primitives.neutralPurple5,
+  onSurface:        primitives.neutralPurple97,
+  onSurfaceVariant: primitives.neutralPurple80,
+  grid:             primitives.neutralPurple10,
 }
 
 export const light: Theme = {
-  surface:   primitives.neutralPurple97,
-  onSurface: primitives.neutralPurple5,
-  grid:      primitives.neutralPurple92,
+  surface:          primitives.neutralPurple97,
+  onSurface:        primitives.neutralPurple5,
+  onSurfaceVariant: primitives.neutralPurple67,
+  grid:             primitives.neutralPurple92,
 }
 
 // --- System helpers ---
