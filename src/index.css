@@ -5,12 +5,6 @@
   font-style: normal;
 }
 
-@media (prefers-color-scheme: dark) {
-  html { background-color: var(--surface-dark); }
-}
-@media (prefers-color-scheme: light), (prefers-color-scheme: no-preference) {
-  html { background-color: var(--surface-light); }
-}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -57,6 +51,7 @@ html, body, #root {
   user-select: none;
   z-index: 1000;
   white-space: pre;
+  color: var(--color-on-surface);
 }
 
 .label {
@@ -68,6 +63,7 @@ html, body, #root {
   font-family: "OtherSans", sans-serif;
   user-select: none;
   z-index: 1000;
+  color: var(--color-on-surface);
 }
 
 /* Typography primitives and tokens are defined in typography.ts */

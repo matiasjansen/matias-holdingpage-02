@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import RAPIER from '@dimforge/rapier2d-compat'
 import opentype from 'opentype.js'
 import { type Theme, systemMode, themeFor } from './colors'
-import { getLetterSize } from './responsiveTokens'
+import { getLetterSize, getFlagCols } from './responsiveTokens'
 
 const fontUrl = '/fonts/OtherSans-Regular.woff'
 
@@ -96,14 +96,28 @@ interface TrailSample {
 }
 
 interface Entry {
+  char: string
   body: RAPIER.RigidBody
   path2d: Path2D
   upperPath2d: Path2D
   renderOffset: Pt
+  upperRenderOffset: Pt
   trail: TrailSample[]
   advance: number
   flagX: number
   flagY: number
+}
+
+function applyThemeToDocument(t: Theme) {
+  document.documentElement.style.backgroundColor = t.surface
+  document.documentElement.style.setProperty('--color-on-surface', t.onSurface)
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  if (!meta) {
+    meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    document.head.appendChild(meta)
+  }
+  meta.content = t.surface
 }
 
 export function PhysicsCanvas() {
@@ -128,6 +142,7 @@ export function PhysicsCanvas() {
     let rafId = 0
     let alive = true
     let theme: Theme = themeFor(systemMode())
+    let buildGlyphCache: (() => void) | undefined
     let flagModeActive = Math.random() < 0.5
     // Continuous rotation: π/2 every 5s = π/10 rad/s — no stepping, no phase shock
     const WIND_RATE = Math.PI / 10
@@ -148,6 +163,7 @@ export function PhysicsCanvas() {
     canvas.style.backgroundColor = theme.surface
     canvas.style.display = flagModeActive ? 'none' : 'block'
     webglCanvas.style.display = flagModeActive ? 'block' : 'none'
+    applyThemeToDocument(theme)
     let gravityDirection = 0 // 0=down, 1=right, 2=up, 3=left
     let setGravity: ((dir: number) => void) | undefined
 
@@ -201,19 +217,50 @@ export function PhysicsCanvas() {
         if (newSize !== currentLetterSize) {
           currentLetterSize = newSize
           spawnLetters(currentLetterSize, cW, cH)
+          buildGlyphCache?.()
         }
+        COLS = getFlagCols(cW)
         computeFlagLayout(cW, cH, currentLetterSize)
+
+        // Reinitialize flag on resize so geometry, cols, and uniforms match new dimensions
+        threeSetup?.renderer.dispose()
+        threeSetup = null
       }
 
       let resizeTimer = 0
-      resizeObserver = new ResizeObserver(() => {
+      const onResizeDebounced = () => {
         clearTimeout(resizeTimer)
         resizeTimer = window.setTimeout(() => onResize(), 150)
-      })
-      resizeObserver.observe(document.documentElement)
+      }
+      window.addEventListener('resize', onResizeDebounced)
+      cleanupResize = () => window.removeEventListener('resize', onResizeDebounced)
 
       const entries: Entry[] = []
       let currentLetterSize = parseInt(getLetterSize(W))
+      let glyphCache: HTMLCanvasElement[] = []
+      const OFF = 128
+
+      buildGlyphCache = () => {
+        glyphCache = entries.map(({ char }) => {
+          const gc = document.createElement('canvas')
+          gc.width = OFF
+          gc.height = OFF
+          const gctx = gc.getContext('2d')!
+          const upperGlyph = otFont.charToGlyph(char.toUpperCase())
+          const upperPath = upperGlyph.getPath(0, 0, OFF)
+          const bb = upperGlyph.getBoundingBox()
+          const scale = OFF / otFont.unitsPerEm
+          const roX = (bb.x1 + bb.x2) / 2 * scale
+          const roY = -(bb.y1 + bb.y2) / 2 * scale
+          gctx.fillStyle = theme.onSurface
+          gctx.save()
+          gctx.translate(OFF / 2, OFF / 2)
+          gctx.translate(-roX, -roY)
+          gctx.fill(new Path2D(upperPath.toPathData(4)), 'evenodd')
+          gctx.restore()
+          return gc
+        })
+      }
 
       function spawnLetters(size: number, width: number, height: number) {
         // Remove existing letter bodies
@@ -257,7 +304,12 @@ export function PhysicsCanvas() {
           const advance = (glyph.advanceWidth ?? 0) * scale
           const upperGlyph = otFont.charToGlyph(letter.char.toUpperCase())
           const upperPath = upperGlyph.getPath(0, 0, letter.size)
-          entries.push({ body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, trail: [], advance, flagX: 0, flagY: 0 })
+          const upperBb = upperGlyph.getBoundingBox()
+          const upperRenderOffset: Pt = {
+            x: (upperBb.x1 + upperBb.x2) / 2 * scale,
+            y: -(upperBb.y1 + upperBb.y2) / 2 * scale,
+          }
+          entries.push({ char: letter.char, body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, upperRenderOffset, trail: [], advance, flagX: 0, flagY: 0 })
         }
       }
 
@@ -281,7 +333,7 @@ export function PhysicsCanvas() {
         })
       }
 
-      const COLS = 40
+      let COLS = getFlagCols(cW)
 
 
       function buildFlagTexture(): HTMLCanvasElement {
@@ -289,25 +341,19 @@ export function PhysicsCanvas() {
         const tileW = cW / COLS
         const tileH = tileW
         const ROWS = Math.ceil(cH / tileH)
-        const scale = (tileH * 0.3) / currentLetterSize
+        const glyphSize = tileH * 0.3
 
         const tc = document.createElement('canvas')
         tc.width = Math.ceil(cW * dpr)
         tc.height = Math.ceil(ROWS * tileH * dpr)
         const tctx = tc.getContext('2d')!
         tctx.scale(dpr, dpr)
-        // Transparent background — only letters and gridlines are drawn
-        tctx.fillStyle = theme.onSurface
         for (let row = 0; row < ROWS; row++) {
           for (let col = 0; col < COLS; col++) {
             const idx = ((row * COLS + col) % entries.length + entries.length) % entries.length
-            const { upperPath2d, renderOffset } = entries[idx]
-            tctx.save()
-            tctx.translate(col * tileW + tileW / 2, row * tileH + tileH / 2)
-            tctx.scale(scale, scale)
-            tctx.translate(-renderOffset.x, -renderOffset.y)
-            tctx.fill(upperPath2d, 'evenodd')
-            tctx.restore()
+            const cx = col * tileW + tileW / 2
+            const cy = row * tileH + tileH / 2
+            tctx.drawImage(glyphCache[idx], cx - glyphSize / 2, cy - glyphSize / 2, glyphSize, glyphSize)
           }
         }
         // gridlines hidden for now
@@ -339,6 +385,8 @@ export function PhysicsCanvas() {
         texture.minFilter = THREE.LinearMipmapLinearFilter
         texture.magFilter = THREE.LinearFilter
         texture.generateMipmaps = true
+        texture.flipY = false
+        texture.premultiplyAlpha = false
 
         const geometry = new THREE.PlaneGeometry(cW, cH, COLS * 8, ROWS * 8)
         const origPositions = new Float32Array(0) // unused — displacement is in GLSL
@@ -356,7 +404,8 @@ export function PhysicsCanvas() {
             uMouseX:   { value: 0 },
             uMouseY:   { value: 0 },
             uMouseActive: { value: 0 },
-            uMouseSigma:  { value: Math.min(cW, cH) * 0.12 },
+            uMouseSigma:  { value: Math.min(cW * 0.2, 154) },
+            uMouseBoost:  { value: 3.0 - 2.0 * Math.min(Math.max(cW - 375, 0) / (2560 - 375), 1) },
             uWindStr:  { value: 1 },
           },
           vertexShader: `
@@ -371,11 +420,12 @@ export function PhysicsCanvas() {
             uniform float uMouseY;
             uniform float uMouseActive;
             uniform float uMouseSigma;
+            uniform float uMouseBoost;
             uniform float uWindStr;
             varying vec2 vUv;
 
             void main() {
-              vUv = uv;
+              vUv = vec2(uv.x, 1.0 - uv.y);
               vec3 pos = position;
 
               float nx = (pos.x + uWidth  * 0.5) / uWidth;
@@ -418,7 +468,7 @@ export function PhysicsCanvas() {
                 float ddx = pos.x - uMouseX;
                 float ddy = pos.y - uMouseY;
                 float g = exp(-(ddx*ddx + ddy*ddy) / (2.0 * uMouseSigma * uMouseSigma));
-                mdz -= uMaxZ * 6.4 * uWindStr * g;
+                mdz -= uMaxZ * 6.4 * uWindStr * uMouseBoost * g;
               }
 
               pos.z += dz * uGust + mdz;
@@ -473,6 +523,7 @@ export function PhysicsCanvas() {
       }
 
       spawnLetters(currentLetterSize, W, H)
+      buildGlyphCache?.()
       computeFlagLayout(W, H, currentLetterSize)
 
       let draggedBody: RAPIER.RigidBody | null = null
@@ -583,7 +634,7 @@ export function PhysicsCanvas() {
             // Ease smoothedNDC toward mouseNDC each frame (dt-independent lerp)
             const ease = 1 - Math.pow(0.04, dt)
             if (mouseNDC) {
-              if (!smoothedNDC) smoothedNDC = { ...mouseNDC }
+              if (!smoothedNDC) smoothedNDC = { x: mouseNDC.x, y: mouseNDC.y }
               else {
                 smoothedNDC.x += (mouseNDC.x - smoothedNDC.x) * ease
                 smoothedNDC.y += (mouseNDC.y - smoothedNDC.y) * ease
@@ -604,18 +655,17 @@ export function PhysicsCanvas() {
             mat.uniforms.uWindStr.value   = windStr
             threeSetup.dotMat.uniforms.uColor.value.set(theme.onSurfaceVariant)
 
+            const activeTarget = smoothedNDC ? 1 : 0
+            mat.uniforms.uMouseActive.value += (activeTarget - mat.uniforms.uMouseActive.value) * ease
             if (smoothedNDC) {
-              mat.uniforms.uMouseActive.value = 1
               mat.uniforms.uMouseX.value = smoothedNDC.x * cW / 2
               mat.uniforms.uMouseY.value = smoothedNDC.y * cH / 2
-            } else {
-              mat.uniforms.uMouseActive.value = 0
             }
 
             renderer.render(scene, camera)
 
             if (windBallVisible && smoothedNDC) {
-              const sigma = Math.min(cW, cH) * 0.12
+              const sigma = Math.min(cW * 0.2, 154)
               const ballR = sigma * (1.5 + 0.5 * windStr)
               const cx = (smoothedNDC.x + 1) / 2 * cW
               const cy = (1 - smoothedNDC.y) / 2 * cH
@@ -731,7 +781,8 @@ export function PhysicsCanvas() {
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const onSchemeChange = () => {
       theme = themeFor(systemMode())
-      canvas.style.backgroundColor = theme.surface
+      canvas.style.backgroundColor = theme.surface; applyThemeToDocument(theme)
+      buildGlyphCache?.()
       threeSetup?.renderer.dispose()
       threeSetup = null
     }
@@ -767,7 +818,8 @@ export function PhysicsCanvas() {
           zeroCount = 0
           const newMode = theme === themeFor('dark') ? 'light' : 'dark'
           theme = themeFor(newMode)
-          canvas.style.backgroundColor = theme.surface
+          canvas.style.backgroundColor = theme.surface; applyThemeToDocument(theme)
+          buildGlyphCache?.()
           threeSetup?.renderer.dispose()
           threeSetup = null
           window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
@@ -861,13 +913,14 @@ export function PhysicsCanvas() {
     webglCanvas.addEventListener('touchend',   onFlagTouchEnd)
     webglCanvas.addEventListener('touchstart', onFlagTouchStart)
 
-    let resizeObserver: ResizeObserver | undefined
+    let resizeObserver: ResizeObserver | undefined // unused, kept for cleanup safety
     let cleanupDrag: (() => void) | undefined
+    let cleanupResize: (() => void) | undefined
     init().catch(err => console.error('PhysicsCanvas init error:', err))
     return () => {
       alive = false
       cancelAnimationFrame(rafId)
-      resizeObserver?.disconnect()
+      cleanupResize?.()
       cleanupDrag?.()
       mq.removeEventListener('change', onSchemeChange)
       document.removeEventListener('keydown', onKeyDown)

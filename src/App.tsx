@@ -158,10 +158,10 @@ function App() {
   return (
     <>
       <PhysicsCanvas />
-      <span className="label" style={{ color: theme.onSurface }}>
+      <span className="label">
         <AnimatedLine text={labelText} startDelay={0} />
       </span>
-      <div className="clock" style={{ color: theme.onSurface }}>
+      <div className="clock">
         {timeBase && (
           <>
             <ClockTimeLine text={timeBase} seconds={seconds} startDelay={labelDuration} />
