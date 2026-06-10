@@ -333,11 +333,102 @@ export function PhysicsCanvas() {
         const texture = new THREE.CanvasTexture(texCanvas)
         texture.colorSpace = THREE.SRGBColorSpace
 
-        const geometry = new THREE.PlaneGeometry(cW, cH, COLS * 4, ROWS * 4)
-        const origPositions = (geometry.attributes.position.array as Float32Array).slice()
-        const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true })
+        const geometry = new THREE.PlaneGeometry(cW, cH, COLS * 8, ROWS * 8)
+        const origPositions = new Float32Array(0) // unused — displacement is in GLSL
+
+        const material = new THREE.ShaderMaterial({
+          uniforms: {
+            uMap:      { value: texture },
+            uTime:     { value: 0 },
+            uGust:     { value: 1 },
+            uWindAngle:{ value: 0 },
+            uMaxZ:     { value: cW * 0.14 },
+            uMaxY:     { value: cH * 0.07 },
+            uWidth:    { value: cW },
+            uHeight:   { value: cH },
+            uMouseX:   { value: 0 },
+            uMouseY:   { value: 0 },
+            uMouseActive: { value: 0 },
+            uMouseSigma:  { value: Math.min(cW, cH) * 0.12 },
+            uWindStr:  { value: 1 },
+          },
+          vertexShader: `
+            uniform float uTime;
+            uniform float uGust;
+            uniform float uWindAngle;
+            uniform float uMaxZ;
+            uniform float uMaxY;
+            uniform float uWidth;
+            uniform float uHeight;
+            uniform float uMouseX;
+            uniform float uMouseY;
+            uniform float uMouseActive;
+            uniform float uMouseSigma;
+            uniform float uWindStr;
+            varying vec2 vUv;
+
+            void main() {
+              vUv = uv;
+              vec3 pos = position;
+
+              float nx = (pos.x + uWidth  * 0.5) / uWidth;
+              float ny = (pos.y + uHeight * 0.5) / uHeight;
+
+              float cosW = cos(uWindAngle);
+              float sinW = sin(uWindAngle);
+              float along  =  nx * cosW + ny * sinW;
+              float across = -nx * sinW + ny * cosW;
+
+              // Pin left edge, free right edge
+              float pin = nx * nx;
+
+              // Z ripples — 8 octaves from large waves to fine grain
+              float dz = 0.0;
+              dz += sin(along *  3.8 - uTime * 2.6)                        * 1.00;
+              dz += sin(along *  8.3 - uTime * 5.1 + across *  2.4)        * 0.30;
+              dz += sin(across * 4.1 - uTime * 3.2 + along  *  1.7)        * 0.20;
+              dz += sin(along * 13.1 - uTime * 7.7 + across *  4.9)        * 0.15;
+              dz += sin(along * 22.0 - uTime *11.0 + across *  7.3)        * 0.09;
+              dz += sin(across*17.5  - uTime * 9.3 + along  *  5.8)        * 0.07;
+              dz += sin(along * 37.0 - uTime *19.1 + across * 13.2)        * 0.04;
+              dz += sin(across*29.0  - uTime *15.4 + along  *  9.7)        * 0.03;
+              dz *= uMaxZ * pin;
+
+              // Y flutter — 4 octaves
+              float dy = 0.0;
+              dy += sin(across * 2.9 - uTime * 1.9 + along * 3.14159)      * 1.00;
+              dy += sin(along  * 3.7 - uTime * 2.3 + across * 1.8)         * 0.40;
+              dy += sin(along  * 6.7 - uTime * 3.8 + across * 2.1)         * 0.25;
+              dy += sin(across * 9.1 - uTime * 5.2 + along  * 3.4)         * 0.12;
+              dy *= uMaxY * pin;
+
+              // Mouse wind jet
+              float mdz = 0.0;
+              if (uMouseActive > 0.5) {
+                float ddx = pos.x - uMouseX;
+                float ddy = pos.y - uMouseY;
+                float g = exp(-(ddx*ddx + ddy*ddy) / (2.0 * uMouseSigma * uMouseSigma));
+                mdz -= uMaxZ * 6.4 * uWindStr * g;
+              }
+
+              pos.z += dz * uGust + mdz;
+              pos.y += dy * uGust;
+
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform sampler2D uMap;
+            varying vec2 vUv;
+            void main() {
+              gl_FragColor = texture2D(uMap, vUv);
+            }
+          `,
+          side: THREE.DoubleSide,
+          transparent: true,
+        })
+
         const mesh = new THREE.Mesh(geometry, material)
-        mesh.rotation.y = 0
         scene.add(mesh)
 
         threeSetup = { renderer, scene, camera, geometry, texture, origPositions }
@@ -472,48 +563,19 @@ export function PhysicsCanvas() {
             // Rough gusty mouse wind stream: layered sines at mismatched frequencies
             const windStr = 0.85 + 0.07 * Math.sin(t * 4.3) + 0.04 * Math.cos(t * 9.1 + 1.7) + 0.04 * Math.sin(t * 17.3 - 0.9)
 
-            const pos = geometry.attributes.position as THREE.BufferAttribute
-            for (let i = 0; i < pos.count; i++) {
-              const ox = origPositions[i * 3]
-              const oy = origPositions[i * 3 + 1]
-              const nx = (ox + cW / 2) / cW   // 0–1 left to right
-              const ny = (oy + cH / 2) / cH   // 0–1 top to bottom
+            const mat = (scene.children[0] as THREE.Mesh).material as THREE.ShaderMaterial
+            mat.uniforms.uTime.value      = t
+            mat.uniforms.uGust.value      = gust
+            mat.uniforms.uWindAngle.value = windAngle
+            mat.uniforms.uWindStr.value   = windStr
 
-              // Project position onto wind direction and perpendicular
-              const along = nx * cosW + ny * sinW          // primary wave axis
-              const across = nx * -sinW + ny * cosW        // perpendicular axis
-
-              // Z wave along wind direction with cross-ripples
-              const dz = maxZ * (
-                Math.sin(along * 3.8 - t * 2.6) +
-                0.30 * Math.sin(along * 8.3 - t * 5.1 + across * 2.4) +
-                0.20 * Math.sin(across * 4.1 - t * 3.2 + along * 1.7) +
-                0.15 * Math.sin(along * 13.1 - t * 7.7 + across * 4.9)
-              )
-
-              // Y flutter
-              const dy = maxY * (
-                Math.sin(across * 2.9 - t * 1.9 + along * Math.PI) +
-                0.40 * Math.sin(along * 3.7 - t * 2.3 + across * 1.8) +
-                0.25 * Math.sin(along * 6.7 - t * 3.8 + across * 2.1)
-              )
-
-                // Mouse wind — tight jet blowing fabric away from viewer at cursor, concentric falloff
-              let mdz = 0
-
-              if (smoothedNDC) {
-                const sigma = Math.min(cW, cH) * 0.12
-                const mwx = smoothedNDC.x * cW / 2
-                const mwy = smoothedNDC.y * cH / 2
-                const ddx = ox - mwx, ddy = oy - mwy
-                const g = Math.exp(-(ddx * ddx + ddy * ddy) / (2 * sigma * sigma))
-                mdz -= maxZ * 6.4 * windStr * g
-              }
-
-              pos.setXYZ(i, ox, oy + dy * gust, dz * gust + mdz)
+            if (smoothedNDC) {
+              mat.uniforms.uMouseActive.value = 1
+              mat.uniforms.uMouseX.value = smoothedNDC.x * cW / 2
+              mat.uniforms.uMouseY.value = smoothedNDC.y * cH / 2
+            } else {
+              mat.uniforms.uMouseActive.value = 0
             }
-            pos.needsUpdate = true
-            geometry.computeVertexNormals()
 
             renderer.render(scene, camera)
 
