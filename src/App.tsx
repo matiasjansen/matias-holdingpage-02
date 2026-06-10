@@ -107,7 +107,7 @@ function ClockTimeLine({ text, seconds, startDelay }: { text: string; seconds: s
 function App() {
   const [timeBase, setTimeBase] = useState('')  // "Day, Mon DD HH:MM"
   const [seconds, setSeconds] = useState('')    // "SS"
-  const [theme, setTheme] = useState(themeFor(systemMode()))
+  const [, setTheme] = useState(themeFor(systemMode()))
 
   useEffect(() => {
     const updateTime = () => {

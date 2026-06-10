@@ -913,7 +913,6 @@ export function PhysicsCanvas() {
     webglCanvas.addEventListener('touchend',   onFlagTouchEnd)
     webglCanvas.addEventListener('touchstart', onFlagTouchStart)
 
-    let resizeObserver: ResizeObserver | undefined // unused, kept for cleanup safety
     let cleanupDrag: (() => void) | undefined
     let cleanupResize: (() => void) | undefined
     init().catch(err => console.error('PhysicsCanvas init error:', err))
