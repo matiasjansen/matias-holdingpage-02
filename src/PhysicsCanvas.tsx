@@ -88,11 +88,41 @@ function simplify(pts: Pt[], minDist = 2): Pt[] {
   return out
 }
 
-interface TrailSample {
-  x: number
-  y: number
-  angle: number
-  timestamp: number
+type TrailSample = { x: number; y: number; angle: number; timestamp: number }
+
+class TrailBuffer {
+  private buf: TrailSample[]
+  private head = 0  // index of oldest sample
+  private count = 0
+  constructor(private capacity: number) {
+    this.buf = new Array(capacity)
+  }
+  push(s: TrailSample) {
+    this.buf[(this.head + this.count) % this.capacity] = s
+    if (this.count < this.capacity) this.count++
+    else this.head = (this.head + 1) % this.capacity  // overwrite oldest
+  }
+  shiftWhile(predicate: (s: TrailSample) => boolean) {
+    while (this.count > 0 && predicate(this.buf[this.head])) {
+      this.head = (this.head + 1) % this.capacity
+      this.count--
+    }
+  }
+  forEach(fn: (s: TrailSample) => void) {
+    for (let i = 0; i < this.count; i++) fn(this.buf[(this.head + i) % this.capacity])
+  }
+  get length() { return this.count }
+  get last(): TrailSample | undefined {
+    return this.count > 0 ? this.buf[(this.head + this.count - 1) % this.capacity] : undefined
+  }
+  clear() { this.head = 0; this.count = 0 }
+}
+
+interface LetterSprite {
+  atlas: HTMLCanvasElement | ImageBitmap  // shared atlas — upgraded to ImageBitmap async
+  sx: number; sy: number    // source rect within the atlas
+  sw: number; sh: number
+  ox: number; oy: number    // anchor offset within the source rect
 }
 
 interface Entry {
@@ -102,10 +132,11 @@ interface Entry {
   upperPath2d: Path2D
   renderOffset: Pt
   upperRenderOffset: Pt
-  trail: TrailSample[]
+  sprite: LetterSprite | null
   advance: number
   flagX: number
   flagY: number
+  trail: TrailBuffer
 }
 
 function applyThemeToDocument(t: Theme) {
@@ -144,6 +175,43 @@ export function PhysicsCanvas() {
     let theme: Theme = themeFor(systemMode())
     let buildGlyphCache: (() => void) | undefined
     let flagModeActive = false
+
+    // Trail parameters — tweakable via triple-U panel
+    let TRAIL_DURATION = 500   // ms before a sample is culled
+    let TRAIL_SUBSTEPS = 8     // interpolated samples inserted between frames
+    let TRAIL_ALPHA = 0.08     // max opacity of the newest trail sample
+
+    // Debug tweak panel (triple-U to toggle)
+    const panel = document.createElement('div')
+    panel.style.cssText = 'position:fixed;bottom:24px;right:24px;background:rgba(0,0,0,0.75);color:#fff;font-family:monospace;font-size:12px;padding:16px;border-radius:8px;display:none;flex-direction:column;gap:10px;z-index:9999;min-width:240px'
+    document.body.appendChild(panel)
+
+    function makeSlider(label: string, min: number, max: number, step: number, getValue: () => number, setValue: (v: number) => void) {
+      const row = document.createElement('div')
+      row.style.cssText = 'display:flex;flex-direction:column;gap:4px'
+      const top = document.createElement('div')
+      top.style.cssText = 'display:flex;justify-content:space-between'
+      const labelEl = document.createElement('span')
+      labelEl.textContent = label
+      const valueEl = document.createElement('span')
+      valueEl.textContent = String(getValue())
+      top.appendChild(labelEl); top.appendChild(valueEl)
+      const slider = document.createElement('input')
+      slider.type = 'range'; slider.min = String(min); slider.max = String(max); slider.step = String(step)
+      slider.value = String(getValue())
+      slider.style.cssText = 'width:100%'
+      slider.addEventListener('input', () => {
+        const v = parseFloat(slider.value)
+        setValue(v)
+        valueEl.textContent = String(v)
+      })
+      row.appendChild(top); row.appendChild(slider)
+      return row
+    }
+
+    panel.appendChild(makeSlider('Trail duration (ms)', 100, 2000, 50, () => TRAIL_DURATION, v => { TRAIL_DURATION = v }))
+    panel.appendChild(makeSlider('Trail substeps', 1, 8, 1, () => TRAIL_SUBSTEPS, v => { TRAIL_SUBSTEPS = v }))
+    panel.appendChild(makeSlider('Trail alpha', 0.01, 1, 0.01, () => TRAIL_ALPHA, v => { TRAIL_ALPHA = v }))
     // Continuous rotation: π/2 every 5s = π/10 rad/s — no stepping, no phase shock
     const WIND_RATE = Math.PI / 10
     let mouseNDC: { x: number; y: number } | null = null
@@ -261,6 +329,64 @@ export function PhysicsCanvas() {
           gctx.restore()
           return gc
         })
+
+        // Build a single atlas canvas containing one cell per unique glyph.
+        // All entries then reference the same atlas — one texture, many subregion draws.
+        const PAD = 4
+        const uniqueChars = Array.from(new Set(entries.map(e => e.char)))
+
+        // Measure each unique glyph
+        const glyphMeasures = uniqueChars.map(char => {
+          const otPath = otFont.charToGlyph(char).getPath(0, 0, currentLetterSize)
+          const pb = otPath.getBoundingBox()
+          const w = Math.ceil(pb.x2 - pb.x1) + PAD * 2
+          const h = Math.ceil(pb.y2 - pb.y1) + PAD * 2
+          const tx = -pb.x1 + PAD
+          const ty = -pb.y1 + PAD
+          return { char, w, h, tx, ty, path2d: new Path2D(otPath.toPathData(4)) }
+        })
+
+        // Build atlas at devicePixelRatio so glyphs are sharp on retina displays.
+        // Source rects are stored in physical pixels; draw calls output at logical size.
+        const dpr = window.devicePixelRatio ?? 1
+
+        const atlasW = glyphMeasures.reduce((sum, m) => sum + m.w, 0)
+        const atlasH = Math.max(...glyphMeasures.map(m => m.h))
+        const atlasCanvas = document.createElement('canvas')
+        atlasCanvas.width = atlasW * dpr
+        atlasCanvas.height = atlasH * dpr
+        const actx = atlasCanvas.getContext('2d')!
+        actx.scale(dpr, dpr)
+        actx.fillStyle = theme.onSurface
+
+        // Render each glyph into its atlas cell, record source rect in physical pixels
+        const atlasRects = new Map<string, { sx: number; sy: number; sw: number; sh: number }>()
+        let cursorX = 0
+        for (const m of glyphMeasures) {
+          actx.save()
+          actx.translate(cursorX + m.tx, m.ty)
+          actx.fill(m.path2d, 'evenodd')
+          actx.restore()
+          atlasRects.set(m.char, { sx: cursorX * dpr, sy: 0, sw: m.w * dpr, sh: m.h * dpr })
+          cursorX += m.w
+        }
+
+        // Assign atlas source rect + anchor offset to every entry
+        for (const entry of entries) {
+          const rect = atlasRects.get(entry.char)!
+          const m = glyphMeasures.find(m => m.char === entry.char)!
+          const ox = entry.renderOffset.x + m.tx
+          const oy = entry.renderOffset.y + m.ty
+          entry.sprite = { atlas: atlasCanvas, ...rect, ox, oy }
+        }
+
+        // Upgrade atlas to GPU-resident ImageBitmap — drawImage is cheaper with ImageBitmap
+        // than HTMLCanvasElement which requires a dirty-check and potential re-upload each call.
+        createImageBitmap(atlasCanvas).then(bitmap => {
+          for (const entry of entries) {
+            if (entry.sprite) entry.sprite.atlas = bitmap
+          }
+        })
       }
 
       function spawnLetters(size: number, width: number, height: number) {
@@ -310,7 +436,7 @@ export function PhysicsCanvas() {
             x: (upperBb.x1 + upperBb.x2) / 2 * scale,
             y: -(upperBb.y1 + upperBb.y2) / 2 * scale,
           }
-          entries.push({ char: letter.char, body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, upperRenderOffset, trail: [], advance, flagX: 0, flagY: 0 })
+          entries.push({ char: letter.char, body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, upperRenderOffset, sprite: null, advance, flagX: 0, flagY: 0, trail: new TrailBuffer(256) })
         }
       }
 
@@ -619,10 +745,6 @@ export function PhysicsCanvas() {
         }
         lastSecond = currentSecond
 
-        const isMobile = navigator.maxTouchPoints > 0 && Math.min(window.innerWidth, window.innerHeight) < 768
-        const trailDuration = isMobile ? 200 : 400
-        const trailSubsteps = isMobile ? 1 : 3
-
         if (flagModeActive) {
           // Three.js renders to its own canvas — just update wave vertices each frame
           if (!threeSetup) initThreeFlag()
@@ -691,51 +813,57 @@ export function PhysicsCanvas() {
 
         ctx.clearRect(0, 0, cW, cH)
 
-        {
-          for (const entry of entries) {
-            const { body, path2d, renderOffset, trail } = entry
-            const pos = body.translation()
-            const angle = body.rotation()
+        for (const entry of entries) {
+          const { body, renderOffset, sprite, trail } = entry
+          const pos = body.translation()
+          const angle = body.rotation()
 
-            const prev = trail[trail.length - 1]
-            if (prev) {
-              let da = angle - prev.angle
-              if (da > Math.PI) da -= 2 * Math.PI
-              if (da < -Math.PI) da += 2 * Math.PI
-              for (let s = 1; s <= trailSubsteps; s++) {
-                const t = s / (trailSubsteps + 1)
-                trail.push({
-                  x: prev.x + (pos.x - prev.x) * t,
-                  y: prev.y + (pos.y - prev.y) * t,
-                  angle: prev.angle + da * t,
-                  timestamp: prev.timestamp + (now - prev.timestamp) * t,
-                })
-              }
+          // Add interpolated samples between last and current position
+          const prev = trail.last
+          if (prev) {
+            let da = angle - prev.angle
+            if (da > Math.PI) da -= 2 * Math.PI
+            if (da < -Math.PI) da += 2 * Math.PI
+            for (let s = 1; s <= TRAIL_SUBSTEPS; s++) {
+              const t = s / (TRAIL_SUBSTEPS + 1)
+              trail.push({ x: prev.x + (pos.x - prev.x) * t, y: prev.y + (pos.y - prev.y) * t, angle: prev.angle + da * t, timestamp: prev.timestamp + (now - prev.timestamp) * t })
             }
-            trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
-            while (trail.length > 0 && now - trail[0].timestamp > trailDuration) trail.shift()
-
-            for (let i = 0; i < trail.length - 1; i++) {
-              const age = now - trail[i].timestamp
-              const alpha = (1 - age / trailDuration) * 0.35
-              ctx.save()
-              ctx.globalAlpha = alpha
-              ctx.translate(trail[i].x, trail[i].y)
-              ctx.rotate(trail[i].angle)
-              ctx.translate(-renderOffset.x, -renderOffset.y)
-              ctx.fillStyle = theme.onSurface
-              ctx.fill(path2d, 'evenodd')
-              ctx.restore()
-            }
-
-            ctx.save()
-            ctx.translate(pos.x, pos.y)
-            ctx.rotate(angle)
-            ctx.translate(-renderOffset.x, -renderOffset.y)
-            ctx.fillStyle = theme.onSurface
-            ctx.fill(path2d, 'evenodd')
-            ctx.restore()
           }
+          trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
+
+          // Cull samples older than trail duration — O(1) per shift with circular buffer
+          trail.shiftWhile(s => now - s.timestamp > TRAIL_DURATION)
+
+          // Draw trail samples oldest-to-newest with age-based alpha.
+          // setTransform(cos*dpr, sin*dpr, -sin*dpr, cos*dpr, x*dpr, y*dpr) combines
+          // the dpr base scale + translate + rotate into one call instead of save/translate/rotate/restore.
+          trail.forEach(sample => {
+            const cos = Math.cos(sample.angle)
+            const sin = Math.sin(sample.angle)
+            ctx.globalAlpha = (1 - (now - sample.timestamp) / TRAIL_DURATION) * TRAIL_ALPHA
+            ctx.setTransform(cos * dpr, sin * dpr, -sin * dpr, cos * dpr, sample.x * dpr, sample.y * dpr)
+            if (sprite) {
+              ctx.drawImage(sprite.atlas, sprite.sx, sprite.sy, sprite.sw, sprite.sh, -sprite.ox, -sprite.oy, sprite.sw / dpr, sprite.sh / dpr)
+            } else {
+              ctx.fillStyle = theme.onSurface
+              ctx.fill(entry.path2d, 'evenodd')
+            }
+          })
+
+          // Draw current letter at full opacity
+          const cos = Math.cos(angle)
+          const sin = Math.sin(angle)
+          ctx.globalAlpha = 1
+          ctx.setTransform(cos * dpr, sin * dpr, -sin * dpr, cos * dpr, pos.x * dpr, pos.y * dpr)
+          if (sprite) {
+            ctx.drawImage(sprite.atlas, sprite.sx, sprite.sy, sprite.sw, sprite.sh, -sprite.ox, -sprite.oy, sprite.sw / dpr, sprite.sh / dpr)
+          } else {
+            ctx.fillStyle = theme.onSurface
+            ctx.fill(entry.path2d, 'evenodd')
+          }
+
+          // Reset to base dpr transform for next entry
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
         }
 
         // Analog clock (hidden for now)
@@ -815,6 +943,10 @@ export function PhysicsCanvas() {
     let dCount = 0
     let dTimer = 0
     let dotsActive = true
+    // Triple-U toggle (trail tweak panel)
+    let uCount = 0
+    let uTimer = 0
+    let panelVisible = false
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === '0') {
         zeroCount++
@@ -891,6 +1023,15 @@ export function PhysicsCanvas() {
             threeSetup = null
           }
         }
+      } else if (e.key === 'u' || e.key === 'U') {
+        uCount++
+        clearTimeout(uTimer)
+        uTimer = window.setTimeout(() => { uCount = 0 }, 500)
+        if (uCount >= 3) {
+          uCount = 0
+          panelVisible = !panelVisible
+          panel.style.display = panelVisible ? 'flex' : 'none'
+        }
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -938,6 +1079,7 @@ export function PhysicsCanvas() {
       webglCanvas.removeEventListener('touchmove',  onFlagTouchMove)
       webglCanvas.removeEventListener('touchend',   onFlagTouchEnd)
       webglCanvas.removeEventListener('touchstart', onFlagTouchStart)
+      panel.remove()
     }
   }, [])
 
