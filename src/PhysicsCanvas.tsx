@@ -177,9 +177,9 @@ export function PhysicsCanvas() {
     let flagModeActive = false
 
     // Trail parameters — tweakable via triple-U panel
-    let TRAIL_DURATION = 700   // ms before a sample is culled
-    let TRAIL_SUBSTEPS = 5     // interpolated samples inserted between frames
-    let TRAIL_ALPHA = 0.09     // max opacity of the newest trail sample
+    let TRAIL_DURATION = 500   // ms before a sample is culled
+    let TRAIL_SUBSTEPS = 8     // interpolated samples inserted between frames
+    let TRAIL_ALPHA = 0.08     // max opacity of the newest trail sample
 
     // Debug tweak panel (triple-U to toggle)
     const panel = document.createElement('div')
