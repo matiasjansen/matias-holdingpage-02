@@ -120,18 +120,19 @@ function App() {
   const [, setTheme] = useState(themeFor(systemMode()))
 
   useEffect(() => {
+    const TZ = 'Europe/Amsterdam'
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: TZ,
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hourCycle: 'h23',
+    })
     const updateTime = () => {
       const now = new Date()
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-      const day = days[now.getDay()]
-      const month = months[now.getMonth()]
-      const date = now.getDate()
-      const h = String(now.getHours()).padStart(2, '0')
-      const m = String(now.getMinutes()).padStart(2, '0')
-      const s = String(now.getSeconds()).padStart(2, '0')
-      setTimeBase(`${day}, ${month} ${date} ${h}:${m}`)
-      setSeconds(s)
+      const parts = fmt.formatToParts(now)
+      const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+      setTimeBase(`${get('weekday')}, ${get('month')} ${get('day')}  ${get('hour')}:${get('minute')}`)
+      setSeconds(get('second'))
     }
     updateTime()
     const interval = setInterval(updateTime, 1000)
@@ -156,11 +157,12 @@ function App() {
   const labelText = 'Matias Jansen, Designer'
   const labelDuration = labelText.length * CHAR_STAGGER + LINE_GAP
 
-  const now = new Date()
-  const offset = -now.getTimezoneOffset() / 60
-  const sign = offset >= 0 ? '+' : '-'
-  const absOffset = Math.abs(Math.floor(offset))
-  const tzLine = `AMS GMT ${sign}${absOffset}`
+  const amsOffsetStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Amsterdam',
+    timeZoneName: 'shortOffset',
+  }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? 'GMT+1'
+  // shortOffset gives "GMT+2" or "GMT+1" — insert space after GMT to match existing style
+  const tzLine = `AMS ${amsOffsetStr.replace('GMT', 'GMT ')}`
 
   const timeLineLength = timeBase.length + 1 + 2  // HH:MM + ':' + SS
   const tzDelay = labelDuration + timeLineLength * CHAR_STAGGER + LINE_GAP
