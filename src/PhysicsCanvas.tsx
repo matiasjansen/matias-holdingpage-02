@@ -88,6 +88,36 @@ function simplify(pts: Pt[], minDist = 2): Pt[] {
   return out
 }
 
+type TrailSample = { x: number; y: number; angle: number; timestamp: number }
+
+class TrailBuffer {
+  private buf: TrailSample[]
+  private head = 0  // index of oldest sample
+  private count = 0
+  constructor(private capacity: number) {
+    this.buf = new Array(capacity)
+  }
+  push(s: TrailSample) {
+    this.buf[(this.head + this.count) % this.capacity] = s
+    if (this.count < this.capacity) this.count++
+    else this.head = (this.head + 1) % this.capacity  // overwrite oldest
+  }
+  shiftWhile(predicate: (s: TrailSample) => boolean) {
+    while (this.count > 0 && predicate(this.buf[this.head])) {
+      this.head = (this.head + 1) % this.capacity
+      this.count--
+    }
+  }
+  forEach(fn: (s: TrailSample) => void) {
+    for (let i = 0; i < this.count; i++) fn(this.buf[(this.head + i) % this.capacity])
+  }
+  get length() { return this.count }
+  get last(): TrailSample | undefined {
+    return this.count > 0 ? this.buf[(this.head + this.count - 1) % this.capacity] : undefined
+  }
+  clear() { this.head = 0; this.count = 0 }
+}
+
 interface LetterSprite {
   atlas: HTMLCanvasElement  // shared atlas canvas for all glyphs
   sx: number; sy: number    // source rect within the atlas
@@ -106,6 +136,7 @@ interface Entry {
   advance: number
   flagX: number
   flagY: number
+  trail: TrailBuffer
 }
 
 function applyThemeToDocument(t: Theme) {
@@ -138,9 +169,6 @@ export function PhysicsCanvas() {
     canvas.style.width = `${W}px`
     canvas.style.height = `${H}px`
     ctx.scale(dpr, dpr)
-    // Prime the canvas pixel buffer so the fade-trail has an opaque base to blend into
-    ctx.fillStyle = themeFor(systemMode()).surface
-    ctx.fillRect(0, 0, W, H)
 
     let rafId = 0
     let alive = true
@@ -212,8 +240,6 @@ export function PhysicsCanvas() {
         canvas.style.width = `${cW}px`
         canvas.style.height = `${cH}px`
         ctx.scale(dpr, dpr)
-        ctx.fillStyle = theme.surface
-        ctx.fillRect(0, 0, cW, cH)
         floor.setTranslation({ x: cW / 2, y: cH + 40 }, true)
         ceiling.setTranslation({ x: cW / 2, y: -40 }, true)
         wallL.setTranslation({ x: -40, y: cH / 2 }, true)
@@ -366,7 +392,7 @@ export function PhysicsCanvas() {
             x: (upperBb.x1 + upperBb.x2) / 2 * scale,
             y: -(upperBb.y1 + upperBb.y2) / 2 * scale,
           }
-          entries.push({ char: letter.char, body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, upperRenderOffset, sprite: null, advance, flagX: 0, flagY: 0 })
+          entries.push({ char: letter.char, body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, upperRenderOffset, sprite: null, advance, flagX: 0, flagY: 0, trail: new TrailBuffer(256) })
         }
       }
 
@@ -741,17 +767,54 @@ export function PhysicsCanvas() {
           return
         }
 
+        const TRAIL_DURATION = 600  // ms — hard cutoff, trails always clear
+        const TRAIL_SUBSTEPS = 3    // interpolated samples between frames for smooth arcs
+
         ctx.clearRect(0, 0, cW, cH)
 
         for (const entry of entries) {
-          const { body, renderOffset, sprite } = entry
+          const { body, renderOffset, sprite, trail } = entry
           const pos = body.translation()
           const angle = body.rotation()
 
+          // Add interpolated samples between last and current position
+          const prev = trail.last
+          if (prev) {
+            let da = angle - prev.angle
+            if (da > Math.PI) da -= 2 * Math.PI
+            if (da < -Math.PI) da += 2 * Math.PI
+            for (let s = 1; s <= TRAIL_SUBSTEPS; s++) {
+              const t = s / (TRAIL_SUBSTEPS + 1)
+              trail.push({ x: prev.x + (pos.x - prev.x) * t, y: prev.y + (pos.y - prev.y) * t, angle: prev.angle + da * t, timestamp: prev.timestamp + (now - prev.timestamp) * t })
+            }
+          }
+          trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
+
+          // Cull samples older than trail duration — O(1) per shift with circular buffer
+          trail.shiftWhile(s => now - s.timestamp > TRAIL_DURATION)
+
+          // Draw trail samples oldest-to-newest with age-based alpha
+          trail.forEach(sample => {
+            const age = now - sample.timestamp
+            const alpha = (1 - age / TRAIL_DURATION) * 0.1
+            ctx.save()
+            ctx.globalAlpha = alpha
+            ctx.translate(sample.x, sample.y)
+            ctx.rotate(sample.angle)
+            if (sprite) {
+              ctx.drawImage(sprite.atlas, sprite.sx, sprite.sy, sprite.sw, sprite.sh, -sprite.ox, -sprite.oy, sprite.sw / dpr, sprite.sh / dpr)
+            } else {
+              ctx.translate(-renderOffset.x, -renderOffset.y)
+              ctx.fillStyle = theme.onSurface
+              ctx.fill(entry.path2d, 'evenodd')
+            }
+            ctx.restore()
+          })
+
+          // Draw current letter at full opacity on top
           ctx.save()
           ctx.translate(pos.x, pos.y)
           ctx.rotate(angle)
-
           if (sprite) {
             ctx.drawImage(sprite.atlas, sprite.sx, sprite.sy, sprite.sw, sprite.sh, -sprite.ox, -sprite.oy, sprite.sw / dpr, sprite.sh / dpr)
           } else {
@@ -759,7 +822,6 @@ export function PhysicsCanvas() {
             ctx.fillStyle = theme.onSurface
             ctx.fill(entry.path2d, 'evenodd')
           }
-
           ctx.restore()
         }
 
