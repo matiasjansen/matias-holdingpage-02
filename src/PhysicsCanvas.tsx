@@ -92,9 +92,11 @@ type TrailSample = { x: number; y: number; angle: number; timestamp: number }
 
 class TrailBuffer {
   private buf: TrailSample[]
-  private head = 0  // index of oldest sample
+  private capacity: number
+  private head = 0
   private count = 0
-  constructor(private capacity: number) {
+  constructor(capacity: number) {
+    this.capacity = capacity
     this.buf = new Array(capacity)
   }
   push(s: TrailSample) {
@@ -814,7 +816,7 @@ export function PhysicsCanvas() {
         ctx.clearRect(0, 0, cW, cH)
 
         for (const entry of entries) {
-          const { body, renderOffset, sprite, trail } = entry
+          const { body, sprite, trail } = entry
           const pos = body.translation()
           const angle = body.rotation()
 
