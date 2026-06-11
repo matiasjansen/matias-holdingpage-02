@@ -88,11 +88,11 @@ function simplify(pts: Pt[], minDist = 2): Pt[] {
   return out
 }
 
-interface TrailSample {
-  x: number
-  y: number
-  angle: number
-  timestamp: number
+interface LetterSprite {
+  atlas: HTMLCanvasElement  // shared atlas canvas for all glyphs
+  sx: number; sy: number    // source rect within the atlas
+  sw: number; sh: number
+  ox: number; oy: number    // anchor offset within the source rect
 }
 
 interface Entry {
@@ -102,7 +102,7 @@ interface Entry {
   upperPath2d: Path2D
   renderOffset: Pt
   upperRenderOffset: Pt
-  trail: TrailSample[]
+  sprite: LetterSprite | null
   advance: number
   flagX: number
   flagY: number
@@ -138,6 +138,9 @@ export function PhysicsCanvas() {
     canvas.style.width = `${W}px`
     canvas.style.height = `${H}px`
     ctx.scale(dpr, dpr)
+    // Prime the canvas pixel buffer so the fade-trail has an opaque base to blend into
+    ctx.fillStyle = themeFor(systemMode()).surface
+    ctx.fillRect(0, 0, W, H)
 
     let rafId = 0
     let alive = true
@@ -209,6 +212,8 @@ export function PhysicsCanvas() {
         canvas.style.width = `${cW}px`
         canvas.style.height = `${cH}px`
         ctx.scale(dpr, dpr)
+        ctx.fillStyle = theme.surface
+        ctx.fillRect(0, 0, cW, cH)
         floor.setTranslation({ x: cW / 2, y: cH + 40 }, true)
         ceiling.setTranslation({ x: cW / 2, y: -40 }, true)
         wallL.setTranslation({ x: -40, y: cH / 2 }, true)
@@ -261,6 +266,57 @@ export function PhysicsCanvas() {
           gctx.restore()
           return gc
         })
+
+        // Build a single atlas canvas containing one cell per unique glyph.
+        // All entries then reference the same atlas — one texture, many subregion draws.
+        const PAD = 4
+        const uniqueChars = Array.from(new Set(entries.map(e => e.char)))
+
+        // Measure each unique glyph
+        const glyphMeasures = uniqueChars.map(char => {
+          const otPath = otFont.charToGlyph(char).getPath(0, 0, currentLetterSize)
+          const pb = otPath.getBoundingBox()
+          const w = Math.ceil(pb.x2 - pb.x1) + PAD * 2
+          const h = Math.ceil(pb.y2 - pb.y1) + PAD * 2
+          const tx = -pb.x1 + PAD
+          const ty = -pb.y1 + PAD
+          return { char, w, h, tx, ty, path2d: new Path2D(otPath.toPathData(4)) }
+        })
+
+        // Build atlas at devicePixelRatio so glyphs are sharp on retina displays.
+        // Source rects are stored in physical pixels; draw calls output at logical size.
+        const dpr = window.devicePixelRatio ?? 1
+
+        const atlasW = glyphMeasures.reduce((sum, m) => sum + m.w, 0)
+        const atlasH = Math.max(...glyphMeasures.map(m => m.h))
+        const atlasCanvas = document.createElement('canvas')
+        atlasCanvas.width = atlasW * dpr
+        atlasCanvas.height = atlasH * dpr
+        const actx = atlasCanvas.getContext('2d')!
+        actx.scale(dpr, dpr)
+        actx.fillStyle = theme.onSurface
+
+        // Render each glyph into its atlas cell, record source rect in physical pixels
+        const atlasRects = new Map<string, { sx: number; sy: number; sw: number; sh: number }>()
+        let cursorX = 0
+        for (const m of glyphMeasures) {
+          actx.save()
+          actx.translate(cursorX + m.tx, m.ty)
+          actx.fill(m.path2d, 'evenodd')
+          actx.restore()
+          atlasRects.set(m.char, { sx: cursorX * dpr, sy: 0, sw: m.w * dpr, sh: m.h * dpr })
+          cursorX += m.w
+        }
+
+        // Assign atlas source rect + anchor offset to every entry
+        for (const entry of entries) {
+          const rect = atlasRects.get(entry.char)!
+          const m = glyphMeasures.find(m => m.char === entry.char)!
+          const ox = entry.renderOffset.x + m.tx
+          const oy = entry.renderOffset.y + m.ty
+          // sw/sh are in physical pixels; draw at logical size (divide by dpr)
+          entry.sprite = { atlas: atlasCanvas, ...rect, ox, oy }
+        }
       }
 
       function spawnLetters(size: number, width: number, height: number) {
@@ -310,7 +366,7 @@ export function PhysicsCanvas() {
             x: (upperBb.x1 + upperBb.x2) / 2 * scale,
             y: -(upperBb.y1 + upperBb.y2) / 2 * scale,
           }
-          entries.push({ char: letter.char, body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, upperRenderOffset, trail: [], advance, flagX: 0, flagY: 0 })
+          entries.push({ char: letter.char, body, path2d: new Path2D(path.toPathData(4)), upperPath2d: new Path2D(upperPath.toPathData(4)), renderOffset, upperRenderOffset, sprite: null, advance, flagX: 0, flagY: 0 })
         }
       }
 
@@ -619,10 +675,6 @@ export function PhysicsCanvas() {
         }
         lastSecond = currentSecond
 
-        const isMobile = navigator.maxTouchPoints > 0 && Math.min(window.innerWidth, window.innerHeight) < 768
-        const trailDuration = isMobile ? 200 : 400
-        const trailSubsteps = isMobile ? 1 : 3
-
         if (flagModeActive) {
           // Three.js renders to its own canvas — just update wave vertices each frame
           if (!threeSetup) initThreeFlag()
@@ -691,51 +743,24 @@ export function PhysicsCanvas() {
 
         ctx.clearRect(0, 0, cW, cH)
 
-        {
-          for (const entry of entries) {
-            const { body, path2d, renderOffset, trail } = entry
-            const pos = body.translation()
-            const angle = body.rotation()
+        for (const entry of entries) {
+          const { body, renderOffset, sprite } = entry
+          const pos = body.translation()
+          const angle = body.rotation()
 
-            const prev = trail[trail.length - 1]
-            if (prev) {
-              let da = angle - prev.angle
-              if (da > Math.PI) da -= 2 * Math.PI
-              if (da < -Math.PI) da += 2 * Math.PI
-              for (let s = 1; s <= trailSubsteps; s++) {
-                const t = s / (trailSubsteps + 1)
-                trail.push({
-                  x: prev.x + (pos.x - prev.x) * t,
-                  y: prev.y + (pos.y - prev.y) * t,
-                  angle: prev.angle + da * t,
-                  timestamp: prev.timestamp + (now - prev.timestamp) * t,
-                })
-              }
-            }
-            trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
-            while (trail.length > 0 && now - trail[0].timestamp > trailDuration) trail.shift()
+          ctx.save()
+          ctx.translate(pos.x, pos.y)
+          ctx.rotate(angle)
 
-            for (let i = 0; i < trail.length - 1; i++) {
-              const age = now - trail[i].timestamp
-              const alpha = (1 - age / trailDuration) * 0.35
-              ctx.save()
-              ctx.globalAlpha = alpha
-              ctx.translate(trail[i].x, trail[i].y)
-              ctx.rotate(trail[i].angle)
-              ctx.translate(-renderOffset.x, -renderOffset.y)
-              ctx.fillStyle = theme.onSurface
-              ctx.fill(path2d, 'evenodd')
-              ctx.restore()
-            }
-
-            ctx.save()
-            ctx.translate(pos.x, pos.y)
-            ctx.rotate(angle)
+          if (sprite) {
+            ctx.drawImage(sprite.atlas, sprite.sx, sprite.sy, sprite.sw, sprite.sh, -sprite.ox, -sprite.oy, sprite.sw / dpr, sprite.sh / dpr)
+          } else {
             ctx.translate(-renderOffset.x, -renderOffset.y)
             ctx.fillStyle = theme.onSurface
-            ctx.fill(path2d, 'evenodd')
-            ctx.restore()
+            ctx.fill(entry.path2d, 'evenodd')
           }
+
+          ctx.restore()
         }
 
         // Analog clock (hidden for now)
