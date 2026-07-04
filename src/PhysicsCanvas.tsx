@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import RAPIER from '@dimforge/rapier2d-compat'
 import opentype from 'opentype.js'
@@ -153,7 +153,7 @@ function applyThemeToDocument(t: Theme) {
   meta.content = t.surface
 }
 
-export function PhysicsCanvas() {
+export function PhysicsCanvas({ style }: { style?: React.CSSProperties } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const webglCanvasRef = useRef<HTMLCanvasElement>(null)
   const windBallRef = useRef<HTMLDivElement>(null)
@@ -1086,7 +1086,7 @@ export function PhysicsCanvas() {
   }, [])
 
   return (
-    <>
+    <div style={style}>
       <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default', animation: 'blurInHeavy 0.8s ease-out both' }} onAnimationEnd={(e) => { (e.currentTarget as HTMLCanvasElement).style.animation = 'none' }} />
       <canvas ref={webglCanvasRef} style={{ position: 'fixed', inset: 0, display: 'none' }} />
       <div ref={windBallRef} style={{
@@ -1097,6 +1097,6 @@ export function PhysicsCanvas() {
         background: 'radial-gradient(circle, rgba(57,255,20,0.22) 0%, rgba(57,255,20,0.08) 45%, rgba(57,255,20,0) 100%)',
         boxShadow: '0 0 32px 8px rgba(57,255,20,0.15)',
       }} />
-    </>
+    </div>
   )
 }

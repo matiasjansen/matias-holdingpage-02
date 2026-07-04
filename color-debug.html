@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Color debug</title>
+<style>
+  body { background: #333; margin: 20px; font: 13px monospace; color: white; }
+  .row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .swatch { width: 48px; height: 48px; border: 1px solid #666; flex-shrink: 0; }
+  .label { flex: 1; }
+</style>
+</head>
+<body>
+<script type="module">
+import { Hct, hexFromArgb } from '/node_modules/@material/material-color-utilities/index.js'
+
+const hct = (h, c, t) => hexFromArgb(Hct.from(h, c, t).toInt())
+
+const colors = [
+  { name: 'dark.surface      neutralPurple5',   value: hct(275,5,5)  },
+  { name: 'dark.onSurface    neutralPurple97',  value: hct(275,5,97) },
+  { name: 'dark.onSurfaceVar neutralPurple80',  value: hct(275,5,80) },
+  { name: 'dark.grid         neutralPurple10',  value: hct(275,5,10) },
+  { name: 'light.surface     neutralPurple97',  value: hct(275,5,97) },
+  { name: 'light.onSurface   neutralPurple5',   value: hct(275,5,5)  },
+  { name: 'light.onSurfaceVar neutralPurple67', value: hct(275,5,67) },
+  { name: 'light.grid        neutralPurple92',  value: hct(275,5,92) },
+]
+
+colors.forEach(({ name, value }) => {
+  const row = document.createElement('div')
+  row.className = 'row'
+  row.innerHTML = `<div class="swatch" style="background:${value}"></div><div class="label">${name}: <strong>${value}</strong></div>`
+  document.body.appendChild(row)
+})
+
+// Also show dark-on-dark and light-on-light contrast
+const darkSurface = hct(275,5,5)
+const darkOn = hct(275,5,97)
+const lightSurface = hct(275,5,97)
+const lightOn = hct(275,5,5)
+
+const note = document.createElement('div')
+note.style.marginTop = '20px'
+note.innerHTML = `
+  <div style="background:${darkSurface};color:${darkOn};padding:16px;margin-bottom:8px">
+    DARK MODE — Matias Jansen, Designer (${darkOn} on ${darkSurface})
+  </div>
+  <div style="background:${lightSurface};color:${lightOn};padding:16px">
+    LIGHT MODE — Matias Jansen, Designer (${lightOn} on ${lightSurface})
+  </div>
+`
+document.body.appendChild(note)
+</script>
+</body>
+</html>

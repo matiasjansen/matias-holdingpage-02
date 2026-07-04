@@ -1,4 +1,5 @@
 import { PhysicsCanvas } from './PhysicsCanvas'
+import { MurmurCanvas } from './MurmurCanvas'
 import { systemMode, themeFor } from './colors'
 import { useEffect, useState } from 'react'
 
@@ -118,6 +119,22 @@ function App() {
   const [timeBase, setTimeBase] = useState('')  // "Day, Mon DD HH:MM"
   const [seconds, setSeconds] = useState('')    // "SS"
   const [, setTheme] = useState(themeFor(systemMode()))
+  const [murmurActive, setMurmurActive] = useState(false)
+
+  // Triple-S toggles the murmuration world
+  useEffect(() => {
+    let count = 0, timer = 0
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 's' || e.key === 'S') {
+        count++
+        clearTimeout(timer)
+        timer = window.setTimeout(() => { count = 0 }, 500)
+        if (count >= 3) { count = 0; setMurmurActive(v => !v) }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     const TZ = 'Europe/Amsterdam'
@@ -169,11 +186,12 @@ function App() {
 
   return (
     <>
-      <PhysicsCanvas />
-      <span className="label">
+      {murmurActive && <MurmurCanvas />}
+      <PhysicsCanvas style={{ display: murmurActive ? 'none' : undefined }} />
+      <span className="label" style={{ display: murmurActive ? 'none' : undefined }}>
         <AnimatedLine text={labelText} startDelay={0} />
       </span>
-      <div className="clock">
+      <div className="clock" style={{ display: murmurActive ? 'none' : undefined }}>
         {timeBase && (
           <>
             <ClockTimeLine text={timeBase} seconds={seconds} startDelay={labelDuration} />
