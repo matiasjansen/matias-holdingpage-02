@@ -323,6 +323,9 @@ export function MurmurCanvas() {
 
     return () => {
       cancelAnimationFrame(raf)
+      geo.dispose()
+      mat.dispose()
+      atlas.dispose()
       renderer.dispose()
       canvas.removeEventListener('mousemove',  onMouseMove)
       canvas.removeEventListener('mouseleave', onMouseLeave)
