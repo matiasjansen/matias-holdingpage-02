@@ -837,9 +837,13 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
           const pos = body.translation()
           const angle = body.rotation()
 
+          // Sleeping bodies don't move: skip sample pushes so the trail fades
+          // out naturally and idle letters cost a single draw each.
+          const sleeping = body.isSleeping()
+
           // Add interpolated samples between last and current position
           const prev = trail.last
-          if (prev) {
+          if (!sleeping && prev) {
             let da = angle - prev.angle
             if (da > Math.PI) da -= 2 * Math.PI
             if (da < -Math.PI) da += 2 * Math.PI
@@ -848,7 +852,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
               trail.push({ x: prev.x + (pos.x - prev.x) * t, y: prev.y + (pos.y - prev.y) * t, angle: prev.angle + da * t, timestamp: prev.timestamp + (now - prev.timestamp) * t })
             }
           }
-          trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
+          if (!sleeping) trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
 
           // Cull samples older than trail duration — O(1) per shift with circular buffer
           trail.shiftWhile(s => now - s.timestamp > TRAIL_DURATION)
