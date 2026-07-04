@@ -187,7 +187,7 @@ function App() {
   return (
     <>
       {murmurActive && <MurmurCanvas />}
-      <PhysicsCanvas style={{ display: murmurActive ? 'none' : undefined }} />
+      <PhysicsCanvas style={{ display: murmurActive ? 'none' : undefined }} paused={murmurActive} />
       <span className="label" style={{ display: murmurActive ? 'none' : undefined }}>
         <AnimatedLine text={labelText} startDelay={0} />
       </span>

@@ -153,10 +153,15 @@ function applyThemeToDocument(t: Theme) {
   meta.content = t.surface
 }
 
-export function PhysicsCanvas({ style }: { style?: React.CSSProperties } = {}) {
+export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProperties; paused?: boolean } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const webglCanvasRef = useRef<HTMLCanvasElement>(null)
   const windBallRef = useRef<HTMLDivElement>(null)
+  const pausedRef = useRef(paused)
+
+  useEffect(() => {
+    pausedRef.current = paused
+  }, [paused])
 
   useEffect(() => {
     const canvas = canvasRef.current!
@@ -735,17 +740,29 @@ export function PhysicsCanvas({ style }: { style?: React.CSSProperties } = {}) {
       const draw = (now: number) => {
         if (!alive) return
 
+        // Paused (e.g. birds mode active): keep the rAF chain alive but do no work
+        if (pausedRef.current) {
+          lastTime = now
+          rafId = requestAnimationFrame(draw)
+          return
+        }
+
         const dt = Math.min((now - lastTime) / 1000, 0.05)
         lastTime = now
-        world.timestep = dt
-        world.step()
 
-        const currentSecond = Math.floor((now / 1000) % 60)
-        if (currentSecond !== lastSecond && currentSecond % 5 === 0) {
-          gravityDirection = (gravityDirection + 1) % 4
-          setGravity?.(gravityDirection)
+        // In flag mode the letters canvas is hidden — skip physics stepping and
+        // gravity rotation so letters resume exactly where they were.
+        if (!flagModeActive) {
+          world.timestep = dt
+          world.step()
+
+          const currentSecond = Math.floor((now / 1000) % 60)
+          if (currentSecond !== lastSecond && currentSecond % 5 === 0) {
+            gravityDirection = (gravityDirection + 1) % 4
+            setGravity?.(gravityDirection)
+          }
+          lastSecond = currentSecond
         }
-        lastSecond = currentSecond
 
         if (flagModeActive) {
           // Three.js renders to its own canvas — just update wave vertices each frame
