@@ -178,6 +178,15 @@ export function MurmurCanvas() {
     }
     window.addEventListener('resize', onResize)
 
+    // ── Spatial hash grid ─────────────────────────────────────────────────────
+    // Cell size = COH_R (largest radius): the 3×3×3 block around a boid's cell
+    // is guaranteed to contain every neighbor within any of the three radii.
+    // Hash collisions only add candidates (filtered by d2 below), never drop them.
+    const CELL = COH_R
+    const grid = new Map<number, number[]>()
+    const cellKey = (ix: number, iy: number, iz: number) =>
+      (ix * 73856093 + iy * 19349663 + iz * 83492791) | 0
+
     // ── Per-frame temporaries ─────────────────────────────────────────────────
     const tmpMat   = new THREE.Matrix4()
     const tmpFwd   = new THREE.Vector3()
@@ -224,6 +233,16 @@ export function MurmurCanvas() {
       const maxDrift = Math.min(W, H) * 0.38
       if (aLen > maxDrift) { const f = 0.6 / aLen; atX -= atX * f; atY -= atY * f; atZ -= atZ * f }
 
+      // ── Rebuild spatial grid (reuse bucket arrays to avoid allocation churn) ──
+      for (const bucket of grid.values()) bucket.length = 0
+      for (let i = 0; i < N; i++) {
+        const b = boids[i]
+        const key = cellKey(Math.floor(b.x / CELL), Math.floor(b.y / CELL), Math.floor(b.z / CELL))
+        let bucket = grid.get(key)
+        if (!bucket) { bucket = []; grid.set(key, bucket) }
+        bucket.push(i)
+      }
+
       // ── Boids simulation (3D) ─────────────────────────────────────────────
       for (let i = 0; i < N; i++) {
         const b = boids[i]
@@ -232,20 +251,30 @@ export function MurmurCanvas() {
         let aliVx = 0, aliVy = 0, aliVz = 0, aliN = 0
         let cohX  = 0, cohY  = 0, cohZ  = 0, cohN = 0
 
-        for (let j = 0; j < N; j++) {
-          if (i === j) continue
-          const o  = boids[j]
-          const dx = b.x - o.x
-          const dy = b.y - o.y
-          const dz = b.z - o.z
-          const d2 = dx*dx + dy*dy + dz*dz
+        const cix = Math.floor(b.x / CELL)
+        const ciy = Math.floor(b.y / CELL)
+        const ciz = Math.floor(b.z / CELL)
+        for (let gz = ciz - 1; gz <= ciz + 1; gz++)
+        for (let gy = ciy - 1; gy <= ciy + 1; gy++)
+        for (let gx = cix - 1; gx <= cix + 1; gx++) {
+          const bucket = grid.get(cellKey(gx, gy, gz))
+          if (!bucket) continue
+          for (let k = 0; k < bucket.length; k++) {
+            const j = bucket[k]
+            if (i === j) continue
+            const o  = boids[j]
+            const dx = b.x - o.x
+            const dy = b.y - o.y
+            const dz = b.z - o.z
+            const d2 = dx*dx + dy*dy + dz*dz
 
-          if (d2 < SEP_R2 && d2 > 0) {
-            const inv = 1 / Math.sqrt(d2)
-            sepX += dx * inv; sepY += dy * inv; sepZ += dz * inv; sepN++
+            if (d2 < SEP_R2 && d2 > 0) {
+              const inv = 1 / Math.sqrt(d2)
+              sepX += dx * inv; sepY += dy * inv; sepZ += dz * inv; sepN++
+            }
+            if (d2 < ALI_R2) { aliVx += o.vx; aliVy += o.vy; aliVz += o.vz; aliN++ }
+            if (d2 < COH_R2) { cohX  += o.x;  cohY  += o.y;  cohZ  += o.z;  cohN++ }
           }
-          if (d2 < ALI_R2) { aliVx += o.vx; aliVy += o.vy; aliVz += o.vz; aliN++ }
-          if (d2 < COH_R2) { cohX  += o.x;  cohY  += o.y;  cohZ  += o.z;  cohN++ }
         }
 
         fx = 0; fy = 0; fz = 0
