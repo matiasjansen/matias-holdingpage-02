@@ -11,6 +11,7 @@ export function columnCountFor(width: number): number {
 
 export function rowCountFor(width: number, height: number): number {
   const columns = columnCountFor(width)
+  if (columns === 8) return 6   // tablet: one fixed row set, no height breakpoints
   const base = Math.round(columns * height / width)
   // Mobile: 2 fewer rows (taller cells, fewer vertical breakpoints as height shrinks)
   return Math.max(1, columns === 4 ? base - 2 : base)
