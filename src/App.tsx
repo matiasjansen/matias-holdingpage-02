@@ -309,7 +309,9 @@ function App() {
   const isMobile = columns === 4
   const compact = columns !== 12   // mobile + tablet: Mode/world list move to the grid rows
   // Row 6, falling back to row 5 on shorter viewports (rowTop also clamps to the row count)
-  const modeTop = rowTop(rowCountFor(width, height) >= 9 ? 6 : 5, width, height)
+  const isTablet = columns === 8
+  const modeCol = isTablet ? 2 : 1   // tablet: one column right, one row down
+  const modeTop = rowTop((rowCountFor(width, height) >= 9 ? 6 : 5) + (isTablet ? 1 : 0), width, height)
   const labelWidth = isMobile ? undefined : colRight(2, width) - colLeft(1, width)
 
   return (
@@ -333,7 +335,7 @@ function App() {
           display: hidden,
           position: 'fixed',
           ...(compact
-            ? { top: modeTop, left: colLeft(1, width) }
+            ? { top: modeTop, left: colLeft(modeCol, width) }
             : { top: 16, left: colRight(9, width), transform: 'translateX(-100%)' }),
           font: '200 24px "OtherSans", sans-serif', lineHeight: '32px',
           color: 'var(--color-on-surface-variant)', userSelect: 'none', zIndex: 1000,
@@ -347,7 +349,7 @@ function App() {
           display: hidden,
           position: 'fixed',
           ...(compact
-            ? { top: modeTop, left: colLeft(2, width), width: colRight(2, width) - colLeft(2, width) }
+            ? { top: modeTop, left: colLeft(modeCol + 1, width), width: colRight(modeCol + 1, width) - colLeft(modeCol + 1, width) }
             : { top: 16, left: colLeft(10, width), width: colRight(10, width) - colLeft(10, width) }),
           font: '250 24px "OtherSans", sans-serif', lineHeight: '32px',
           userSelect: 'none', zIndex: 1000,
