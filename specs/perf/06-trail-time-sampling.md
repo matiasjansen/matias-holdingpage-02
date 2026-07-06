@@ -1,0 +1,13 @@
+# 06 — Refresh-rate-independent trail sampling
+
+**Problem.** In letters mode, trail samples were pushed per rendered frame: `TRAIL_SUBSTEPS` (8) + 1 per frame, all live samples (< `TRAIL_DURATION` = 500ms) redrawn each frame with age-based alpha. Sample count therefore scaled with refresh rate — on a 120Hz ProMotion display (M3 MacBook Pro built-in) a letter held ~540 live samples, so 21 awake letters (gravity flips every 5s wake all of them) cost ~10k+ alpha-blended `drawImage` calls per frame on a full-retina 2D canvas. Dominant cost; cause of the built-in-display chugging.
+
+**Fix (final).** Keep the original replay pipeline — every live sample redrawn each frame with float-computed age alpha — but push samples on a **fixed time grid** instead of per frame: one sample every `TRAIL_SAMPLE_MS` (default 4ms), interpolated (position + shortest-arc angle) between the previous sample and the current transform, capped at 64 per frame. Density is now identical at 60Hz and 120Hz.
+
+Worst case per letter: 500ms / 4ms ≈ 110 live samples (vs ~540 at 120Hz before) — a ~5× draw-count cut on ProMotion, below what the 60Hz original handled comfortably. `TrailBuffer` capacity (256) doubles as a hard cost ceiling. Sleeping letters still push nothing (spec 04) and cost one draw each.
+
+**Visual invariants preserved:** linear age fade recomputed in float each frame (flicker-free by construction), per-letter trail/letter interleaving, sub-255ths culling. At 4ms the sample grid is ~2× sparser than the old 60Hz effective spacing, so heavy-overlap stacking is fractionally lighter — imperceptible at `TRAIL_ALPHA` = 0.08; the panel's sample-interval slider (2–16ms, was "Trail substeps") tunes density vs cost.
+
+**Rejected approach (tried 2026-07-06, reverted same day): persistent offscreen trail canvas** — stamp once per letter, fade the canvas in place with `destination-out`, composite once. O(letters) per frame, but fundamentally incompatible with 8%-alpha trails in 8-bit canvas alpha: ~20 representable levels mean in-place decay either stalls (permanent ghosts — per-frame fade alphas round to no-op below a threshold) or, when batched to defeat rounding, steps visibly (~12% dims at ~20Hz — user-visible "PWM" flicker). Exponential decay also collapsed the ribbon vs the linear ramp, and distance-only stamp interpolation left rotated ghosts on spinning letters. Any future re-attempt needs float-precision accumulation (WebGL render target), not Canvas2D.
+
+**Verify:** `npm run build`; eyeball letters mode on the ProMotion display (smooth trails while tumbling — no flicker, no gaps on fast/spinning letters — clean fade at rest, drag a letter), triple-M and triple-S toggles still fine.

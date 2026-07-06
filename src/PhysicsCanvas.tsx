@@ -117,7 +117,6 @@ class TrailBuffer {
   get last(): TrailSample | undefined {
     return this.count > 0 ? this.buf[(this.head + this.count - 1) % this.capacity] : undefined
   }
-  clear() { this.head = 0; this.count = 0 }
 }
 
 interface LetterSprite {
@@ -185,7 +184,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
 
     // Trail parameters — tweakable via triple-U panel
     let TRAIL_DURATION = 500   // ms before a sample is culled
-    let TRAIL_SUBSTEPS = 8     // interpolated samples inserted between frames
+    let TRAIL_SAMPLE_MS = 4    // ms between trail samples (refresh-rate independent)
     let TRAIL_ALPHA = 0.08     // max opacity of the newest trail sample
 
     // Debug tweak panel (triple-U to toggle)
@@ -217,7 +216,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
     }
 
     panel.appendChild(makeSlider('Trail duration (ms)', 100, 2000, 50, () => TRAIL_DURATION, v => { TRAIL_DURATION = v }))
-    panel.appendChild(makeSlider('Trail substeps', 1, 8, 1, () => TRAIL_SUBSTEPS, v => { TRAIL_SUBSTEPS = v }))
+    panel.appendChild(makeSlider('Sample interval (ms)', 2, 16, 1, () => TRAIL_SAMPLE_MS, v => { TRAIL_SAMPLE_MS = v }))
     panel.appendChild(makeSlider('Trail alpha', 0.01, 1, 0.01, () => TRAIL_ALPHA, v => { TRAIL_ALPHA = v }))
     // Continuous rotation: π/2 every 5s = π/10 rad/s — no stepping, no phase shock
     const WIND_RATE = Math.PI / 10
@@ -265,7 +264,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
 
       let cW = W, cH = H
 
-      const makeStatic = (x: number, y: number, hw: number, hh: number) => {
+      const makeStatic =(x: number, y: number, hw: number, hh: number) => {
         const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y))
         world.createCollider(RAPIER.ColliderDesc.cuboid(hw, hh), body)
         return body
@@ -843,25 +842,39 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
 
           // Sleeping bodies don't move: skip sample pushes so the trail fades
           // out naturally and idle letters cost a single draw each.
-          const sleeping = body.isSleeping()
-
-          // Add interpolated samples between last and current position
-          const prev = trail.last
-          if (!sleeping && prev) {
-            let da = angle - prev.angle
-            if (da > Math.PI) da -= 2 * Math.PI
-            if (da < -Math.PI) da += 2 * Math.PI
-            for (let s = 1; s <= TRAIL_SUBSTEPS; s++) {
-              const t = s / (TRAIL_SUBSTEPS + 1)
-              trail.push({ x: prev.x + (pos.x - prev.x) * t, y: prev.y + (pos.y - prev.y) * t, angle: prev.angle + da * t, timestamp: prev.timestamp + (now - prev.timestamp) * t })
+          if (!body.isSleeping()) {
+            // Push samples on a fixed time grid (TRAIL_SAMPLE_MS apart),
+            // interpolated between the previous sample and the current
+            // transform — density is refresh-rate independent, unlike the old
+            // per-frame substeps that doubled trail cost on 120Hz displays.
+            const prev = trail.last
+            if (!prev) {
+              trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
+            } else {
+              const span = now - prev.timestamp
+              const steps = Math.min(64, Math.floor(span / TRAIL_SAMPLE_MS))
+              if (steps > 0) {
+                let da = angle - prev.angle
+                if (da > Math.PI) da -= 2 * Math.PI
+                if (da < -Math.PI) da += 2 * Math.PI
+                for (let s = 1; s <= steps; s++) {
+                  const t = (s * TRAIL_SAMPLE_MS) / span
+                  trail.push({
+                    x: prev.x + (pos.x - prev.x) * t,
+                    y: prev.y + (pos.y - prev.y) * t,
+                    angle: prev.angle + da * t,
+                    timestamp: prev.timestamp + s * TRAIL_SAMPLE_MS,
+                  })
+                }
+              }
             }
           }
-          if (!sleeping) trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
 
           // Cull samples older than trail duration — O(1) per shift with circular buffer
           trail.shiftWhile(s => now - s.timestamp > trailCullMs)
 
-          // Draw trail samples oldest-to-newest with age-based alpha.
+          // Draw trail samples oldest-to-newest with age-based alpha, computed
+          // fresh in float each frame — no accumulated 8-bit decay, no flicker.
           // setTransform(cos*dpr, sin*dpr, -sin*dpr, cos*dpr, x*dpr, y*dpr) combines
           // the dpr base scale + translate + rotate into one call instead of save/translate/rotate/restore.
           for (let ti = 0; ti < trail.length; ti++) {
