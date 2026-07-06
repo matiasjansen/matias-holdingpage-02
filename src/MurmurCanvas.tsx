@@ -776,8 +776,9 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
 
           mesh.setMatrixAt(i, tmpMat)
         }
-        mesh.instanceMatrix.clearUpdateRanges()
-        mesh.instanceMatrix.addUpdateRange(0, n * 16)
+        // No addUpdateRange here: partial bufferSubData into a buffer the GPU is
+        // still drawing from (5 stamps/frame with trail substeps) forces implicit
+        // sync stalls on Apple Silicon — full-buffer upload lets the driver orphan.
         mesh.instanceMatrix.needsUpdate = true
       }
 
