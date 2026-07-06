@@ -186,6 +186,10 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
     let theme: Theme = themeFor(systemMode())
     let buildGlyphCache: (() => void) | undefined
     let flagModeActive = false
+    // Static-scene skip: once every body sleeps and every trail empties, the
+    // letters canvas is pixel-identical frame to frame — draw one final frame,
+    // then skip clear+redraw entirely until something invalidates this.
+    let staticFrameDrawn = false
 
     // Trail parameters — tweakable via triple-U panel
     let TRAIL_DURATION = 500   // ms before a sample is culled
@@ -316,6 +320,9 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
 
         // Reinitialize flag on resize so geometry, cols, and uniforms match new dimensions
         disposeThree()
+
+        // Canvas dims/letters changed — force a redraw even if bodies are asleep.
+        staticFrameDrawn = false
       }
 
       let resizeTimer = 0
@@ -408,6 +415,8 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
           for (const entry of entries) {
             if (entry.sprite) entry.sprite.atlas = bitmap
           }
+          // Atlas reference swapped — redraw even if the scene looked static.
+          staticFrameDrawn = false
         })
       }
 
@@ -845,6 +854,17 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
           return
         }
 
+        // Recomputed fresh every frame from current physics/trail state — bodies
+        // wake on any disturbance (gravity flip, drag) so isSleeping() already
+        // covers those cases; non-physics invalidations (theme, resize, bitmap
+        // upgrade, mode return, unpause) explicitly reset staticFrameDrawn below.
+        const sceneStatic = entries.every(e => e.body.isSleeping() && e.trail.length === 0)
+        if (sceneStatic && staticFrameDrawn) {
+          rafId = requestAnimationFrame(draw)
+          return
+        }
+        staticFrameDrawn = sceneStatic
+
         ctx.clearRect(0, 0, cW, cH)
 
         // Samples older than this render at alpha < 1/255 — quantized to nothing —
@@ -970,6 +990,8 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
         if (scheduled) return
         scheduled = true
         lastTime = performance.now()
+        // Unpausing — force a redraw even if the scene was static when paused.
+        staticFrameDrawn = false
         rafId = requestAnimationFrame(draw)
       }
 
@@ -986,6 +1008,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       canvas.style.backgroundColor = theme.surface; applyThemeToDocument(theme)
       buildGlyphCache?.()
       disposeThree()
+      staticFrameDrawn = false
     }
     mq.addEventListener('change', onSchemeChange)
 
@@ -1020,6 +1043,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       canvas.style.backgroundColor = theme.surface; applyThemeToDocument(theme)
       buildGlyphCache?.()
       disposeThree()
+      staticFrameDrawn = false
       window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
     }
     const setFlagMode = (next: boolean) => {
@@ -1037,6 +1061,8 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       windBall.style.display = 'none'
       if (!flagModeActive) {
         disposeThree()
+        // Returning to letters mode from flag mode — force a redraw.
+        staticFrameDrawn = false
       }
     }
     const onRequestThemeToggle = () => toggleTheme()
