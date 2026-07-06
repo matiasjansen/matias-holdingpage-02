@@ -196,6 +196,7 @@ function App() {
   const [gridMode, setGridMode] = useState<'off' | 'modular'>('off')
   const [world, setWorld] = useState<World>('ghost')
   const [emailCopied, setEmailCopied] = useState(false)
+  const [booted, setBooted] = useState(false)   // true once launch text animations are done
   const { width } = useViewportSize()
 
   const murmurActive = world === 'flock'
@@ -297,6 +298,12 @@ function App() {
 
   const hidden = undefined   // UI shows in every world (was hidden in flock)
   const columns = columnCountFor(width)
+  useEffect(() => {
+    const id = window.setTimeout(() => setBooted(true), (labelDuration + 11 * CHAR_STAGGER + 0.5) * 1000)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const isMobile = columns === 4
   const labelWidth = isMobile ? undefined : colRight(2, width) - colLeft(1, width)
 
@@ -332,6 +339,7 @@ function App() {
         style={{
           display: hidden,
           position: 'fixed', top: 16, left: colLeft(10, width),
+          width: colRight(10, width) - colLeft(10, width),
           font: '250 24px "OtherSans", sans-serif', lineHeight: '32px',
           userSelect: 'none', zIndex: 1000,
         }}
@@ -352,7 +360,11 @@ function App() {
                 <AnimatedLine text={w.label} startDelay={labelDuration + WORLDS.findIndex(x => x.id === w.id) * 3 * CHAR_STAGGER} />
               </span>
               {active && (
-                <span style={{ marginLeft: 'auto', paddingLeft: 8, display: 'inline-flex', transform: 'translateY(-3px)' }}>
+                <span style={{
+                  marginLeft: 'auto', paddingLeft: 8, display: 'inline-flex', transform: 'translateY(-3px)',
+                  // Fade in once after the world labels finish animating; instant on later switches
+                  animation: booted ? undefined : `blurIn 0.5s ${labelDuration + 11 * CHAR_STAGGER}s ease-out both`,
+                }}>
                   <CheckIcon />
                 </span>
               )}
