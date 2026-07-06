@@ -131,7 +131,7 @@ export interface Theme {
 export const dark: Theme = {
   surface:          primitives.neutralPurple5,
   onSurface:        primitives.neutralPurple97,
-  onSurfaceVariant: primitives.neutralPurple80,
+  onSurfaceVariant: '#50525B',   // was rendering #757680; darker per design call
   grid:             primitives.neutralPurple10,
 }
 
