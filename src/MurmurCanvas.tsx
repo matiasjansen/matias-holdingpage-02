@@ -404,6 +404,24 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
     canvas.addEventListener('touchmove',  onTouchMove,  { passive: true })
     canvas.addEventListener('touchend',   onTouchEnd)
 
+    // ── Theme sync ────────────────────────────────────────────────────────────
+    // Theme is otherwise captured once at mount; PhysicsCanvas owns toggling and
+    // broadcasts 'theme-toggle'. Track it (and system scheme changes) here so the
+    // flock's clear color, glyph color, and trail-fade color follow along.
+    const applyMurmurTheme = (mode: 'light' | 'dark') => {
+      const th = themeFor(mode)
+      renderer.setClearColor(new THREE.Color(th.surface))
+      mat.uniforms.uColor.value.set(th.onSurface)
+      ;(copyMat.uniforms.uColor.value as THREE.Color).copy(new THREE.Color(th.surface).convertLinearToSRGB())
+      prevTrailOn = false // re-clear trail targets next frame — they hold the old surface color
+    }
+    const onThemeToggle = (e: Event) =>
+      applyMurmurTheme((e as CustomEvent<{ mode: 'light' | 'dark' }>).detail.mode)
+    const themeMq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onSchemeChange = () => applyMurmurTheme(systemMode())
+    window.addEventListener('theme-toggle', onThemeToggle)
+    themeMq.addEventListener('change', onSchemeChange)
+
     const onResize = () => {
       W = window.innerWidth; H = window.innerHeight
       renderer.setSize(W, H)
@@ -872,6 +890,8 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
       trailA.dispose()
       trailB.dispose()
       renderer.dispose()
+      window.removeEventListener('theme-toggle', onThemeToggle)
+      themeMq.removeEventListener('change', onSchemeChange)
       canvas.removeEventListener('mousemove',  onMouseMove)
       canvas.removeEventListener('mouseleave', onMouseLeave)
       canvas.removeEventListener('touchmove',  onTouchMove)
