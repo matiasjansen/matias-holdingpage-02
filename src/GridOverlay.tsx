@@ -1,30 +1,13 @@
-import { useEffect, useState } from 'react'
-import { breakpoints } from './colors'
+import { columnCountFor, rowCountFor, useViewportSize } from './layoutGrid'
 
 const GAP = 16
 const LINE = 'rgba(255, 110, 30, 0.66)'
 
-function columnCountFor(width: number): number {
-  if (width >= breakpoints.lg) return 12
-  if (width >= breakpoints.md) return 8
-  return 4
-}
-
 export function GridOverlay({ mode }: { mode: 'columns' | 'modular' }) {
-  const [width, setWidth] = useState(window.innerWidth)
-  const [height, setHeight] = useState(window.innerHeight)
-
-  useEffect(() => {
-    const onResize = () => {
-      setWidth(window.innerWidth)
-      setHeight(window.innerHeight)
-    }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
+  const { width, height } = useViewportSize()
 
   const columns = columnCountFor(width)
-  const rowCount = Math.max(1, Math.round(columns * height / width))
+  const rowCount = rowCountFor(width, height)
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none' }}>

@@ -143,6 +143,7 @@ interface Entry {
 function applyThemeToDocument(t: Theme) {
   document.documentElement.style.backgroundColor = t.surface
   document.documentElement.style.setProperty('--color-on-surface', t.onSurface)
+  document.documentElement.style.setProperty('--color-on-surface-variant', t.onSurfaceVariant)
   let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
   if (!meta) {
     meta = document.createElement('meta')
@@ -998,6 +999,38 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
     let uCount = 0
     let uTimer = 0
     let panelVisible = false
+    const toggleTheme = () => {
+      const newMode = theme === themeFor('dark') ? 'light' : 'dark'
+      theme = themeFor(newMode)
+      canvas.style.backgroundColor = theme.surface; applyThemeToDocument(theme)
+      buildGlyphCache?.()
+      disposeThree()
+      window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
+    }
+    const setFlagMode = (next: boolean) => {
+      flagModeActive = next
+      canvas.style.display = flagModeActive ? 'none' : 'block'
+      if (flagModeActive) {
+        webglCanvas.style.display = 'block'
+        webglCanvas.classList.remove('flag-enter')
+        void webglCanvas.offsetWidth // force reflow so animation re-triggers
+        webglCanvas.classList.add('flag-enter')
+      } else {
+        webglCanvas.style.display = 'none'
+        webglCanvas.classList.remove('flag-enter')
+      }
+      windBall.style.display = 'none'
+      if (!flagModeActive) {
+        disposeThree()
+      }
+    }
+    const onRequestThemeToggle = () => toggleTheme()
+    const onRequestWorldSelect = (e: Event) => {
+      const world = (e as CustomEvent<{ world: 'ghost' | 'wind' | 'flock' }>).detail.world
+      if (world !== 'flock') setFlagMode(world === 'wind')
+    }
+    window.addEventListener('request-theme-toggle', onRequestThemeToggle)
+    window.addEventListener('request-world-select', onRequestWorldSelect)
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === '0') {
         zeroCount++
@@ -1005,12 +1038,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
         zeroTimer = window.setTimeout(() => { zeroCount = 0 }, 500)
         if (zeroCount >= 3) {
           zeroCount = 0
-          const newMode = theme === themeFor('dark') ? 'light' : 'dark'
-          theme = themeFor(newMode)
-          canvas.style.backgroundColor = theme.surface; applyThemeToDocument(theme)
-          buildGlyphCache?.()
-          disposeThree()
-          window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
+          toggleTheme()
         }
       } else if (e.key === '9') {
         nineCount++
@@ -1056,21 +1084,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
         mTimer = window.setTimeout(() => { mCount = 0 }, 500)
         if (mCount >= 3) {
           mCount = 0
-          flagModeActive = !flagModeActive
-          canvas.style.display = flagModeActive ? 'none' : 'block'
-          if (flagModeActive) {
-            webglCanvas.style.display = 'block'
-            webglCanvas.classList.remove('flag-enter')
-            void webglCanvas.offsetWidth // force reflow so animation re-triggers
-            webglCanvas.classList.add('flag-enter')
-          } else {
-            webglCanvas.style.display = 'none'
-            webglCanvas.classList.remove('flag-enter')
-          }
-          windBall.style.display = 'none'
-          if (!flagModeActive) {
-            disposeThree()
-          }
+          setFlagMode(!flagModeActive)
         }
       } else if (e.key === 'u' || e.key === 'U') {
         uCount++
@@ -1120,6 +1134,8 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       cleanupDrag?.()
       mq.removeEventListener('change', onSchemeChange)
       document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('request-theme-toggle', onRequestThemeToggle)
+      window.removeEventListener('request-world-select', onRequestWorldSelect)
       disposeThree()
       webglCanvas.removeEventListener('mousemove',  onFlagMouseMove)
       webglCanvas.removeEventListener('mouseleave', onFlagMouseLeave)
@@ -1133,7 +1149,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
   }, [])
 
   return (
-    <div style={style}>
+    <div style={{ ...style, position: 'relative', zIndex: 0 }}>
       <canvas ref={canvasRef} style={{ display: 'block', cursor: 'default', animation: 'blurInHeavy 0.8s ease-out both' }} onAnimationEnd={(e) => { (e.currentTarget as HTMLCanvasElement).style.animation = 'none' }} />
       <canvas ref={webglCanvasRef} style={{ position: 'fixed', inset: 0, display: 'none' }} />
       <div ref={windBallRef} style={{

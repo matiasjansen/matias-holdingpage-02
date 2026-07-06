@@ -46,6 +46,7 @@ html, body, #root {
   top: 62px;
   left: 16px;
   font-size: 24px;
+  font-weight: 250;
   line-height: 32px;
   font-family: "OtherSans", sans-serif;
   user-select: none;
@@ -59,6 +60,7 @@ html, body, #root {
   top: 16px;
   left: 16px;
   font-size: 24px;
+  font-weight: 250;
   line-height: 32px;
   font-family: "OtherSans", sans-serif;
   user-select: none;
@@ -67,3 +69,32 @@ html, body, #root {
 }
 
 /* Typography primitives and tokens are defined in typography.ts */
+
+.hover-underline {
+  cursor: pointer;
+  background-repeat: no-repeat;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: right calc(100% - 4px);
+  background-size: 0% 1.5px;
+  transition: background-size 0.2s ease-out, background-position 0s 0.2s;
+}
+
+.hover-underline:hover,
+.world-row:hover .hover-underline {
+  background-position: left calc(100% - 4px);
+  background-size: 100% 1.5px;
+  transition: background-size 0.2s ease-out;
+}
+
+.world-row {
+  cursor: pointer;
+}
+
+.icon-button {
+  opacity: 1;
+  transition: opacity 0.15s ease-out;
+}
+
+.icon-button:hover {
+  opacity: 0.6;
+}
