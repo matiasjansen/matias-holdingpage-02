@@ -420,9 +420,13 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
     // is guaranteed to contain every neighbor within any of the three radii.
     // Hash collisions only add candidates (filtered by d2 below), never drop them.
     const CELL = COH_R
-    const grid = new Map<number, number[]>()
-    const cellKey = (ix: number, iy: number, iz: number) =>
-      (ix * 73856093 + iy * 19349663 + iz * 83492791) | 0
+    const HASH_SIZE = 4096 // power of two
+    const cellStart = new Int32Array(HASH_SIZE + 1)
+    const cellCursor = new Int32Array(HASH_SIZE)
+    const cellEntries = new Int32Array(MAX_N)
+    const boidCell = new Int32Array(MAX_N) // scratch: hash per boid
+    const hashCell = (ix: number, iy: number, iz: number) =>
+      ((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) & (HASH_SIZE - 1)
 
     // ── Per-frame temporaries ─────────────────────────────────────────────────
     const tmpMat = new THREE.Matrix4()
@@ -566,15 +570,20 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
       // ── Rebuild spatial grid (reuse bucket arrays to avoid allocation churn) ──
       // Also accumulate the flock centroid for the regroup force below.
       let cenX = 0, cenY = 0, cenZ = 0
-      for (const bucket of grid.values()) bucket.length = 0
+      cellStart.fill(0)
       for (let i = 0; i < n; i++) {
-        const key = cellKey(Math.floor(bpx[i] / CELL), Math.floor(bpy[i] / CELL), Math.floor(bpz[i] / CELL))
-        let bucket = grid.get(key)
-        if (!bucket) { bucket = []; grid.set(key, bucket) }
-        bucket.push(i)
+        const h = hashCell(Math.floor(bpx[i] / CELL), Math.floor(bpy[i] / CELL), Math.floor(bpz[i] / CELL))
+        boidCell[i] = h
+        cellStart[h + 1]++
         cenX += bpx[i]; cenY += bpy[i]; cenZ += bpz[i]
       }
       cenX /= n; cenY /= n; cenZ /= n
+      for (let h = 0; h < HASH_SIZE; h++) cellStart[h + 1] += cellStart[h]
+      cellCursor.set(cellStart.subarray(0, HASH_SIZE))
+      for (let i = 0; i < n; i++) {
+        const h = boidCell[i]
+        cellEntries[cellCursor[h]++] = i
+      }
 
       // ── Force-cap breathing ────────────────────────────────────────────────
       // Slow global oscillation (~0.7×–1.3×) keeps turns from all snapping at
@@ -606,10 +615,9 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
         for (let gz = ciz - 1; gz <= ciz + 1; gz++)
         for (let gy = ciy - 1; gy <= ciy + 1; gy++)
         for (let gx = cix - 1; gx <= cix + 1; gx++) {
-          const bucket = grid.get(cellKey(gx, gy, gz))
-          if (!bucket) continue
-          for (let k = 0; k < bucket.length; k++) {
-            const j = bucket[k]
+          const h = hashCell(gx, gy, gz)
+          for (let k = cellStart[h]; k < cellStart[h + 1]; k++) {
+            const j = cellEntries[k]
             if (i === j) continue
             const dx = bx - bpx[j]
             const dy = by - bpy[j]
