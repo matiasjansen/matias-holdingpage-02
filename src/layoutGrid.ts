@@ -11,7 +11,9 @@ export function columnCountFor(width: number): number {
 
 export function rowCountFor(width: number, height: number): number {
   const columns = columnCountFor(width)
-  return Math.max(1, Math.round(columns * height / width))
+  const base = Math.round(columns * height / width)
+  // Mobile: 2 fewer rows (taller cells, fewer vertical breakpoints as height shrinks)
+  return Math.max(1, columns === 4 ? base - 2 : base)
 }
 
 function colWidthPx(width: number): number {
