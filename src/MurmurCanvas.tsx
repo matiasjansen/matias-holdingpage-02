@@ -69,7 +69,7 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
       trail: 0.05,             // scales effective duration; 0 = off (zero-cost path)
       trailDuration: 0.5,      // seconds for a trail to fade to half-strength (frame-rate independent)
       trailSubsteps: 4,        // 0 = single stamp/frame
-      count: 2600,             // live boid count; arrays are pre-allocated to MAX_N
+      count: 2850,             // live boid count; arrays are pre-allocated to MAX_N
       alignment: 2.4,
       cohesion: 0,             // global regroup + attraction do the gathering; 0 local cohesion = streaming ribbons
       separation: W_SEP,
