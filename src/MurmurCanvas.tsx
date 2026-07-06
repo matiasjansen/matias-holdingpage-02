@@ -147,6 +147,9 @@ export function MurmurCanvas() {
 
     const mesh = new THREE.InstancedMesh(geo, mat, N)
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    // Bounding sphere is never updated as instances move — a stale sphere could
+    // wrongly cull the whole flock during camera drift
+    mesh.frustumCulled = false
     scene.add(mesh)
 
     // ── Attractor ─────────────────────────────────────────────────────────────

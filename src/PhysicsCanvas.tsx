@@ -110,8 +110,8 @@ class TrailBuffer {
       this.count--
     }
   }
-  forEach(fn: (s: TrailSample) => void) {
-    for (let i = 0; i < this.count; i++) fn(this.buf[(this.head + i) % this.capacity])
+  at(i: number): TrailSample {
+    return this.buf[(this.head + i) % this.capacity]
   }
   get length() { return this.count }
   get last(): TrailSample | undefined {
@@ -832,6 +832,10 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
 
         ctx.clearRect(0, 0, cW, cH)
 
+        // Samples older than this render at alpha < 1/255 — quantized to nothing —
+        // so cull them early. Recomputed each frame since TRAIL_ALPHA is tweakable.
+        const trailCullMs = TRAIL_DURATION * Math.max(0, Math.min(1, 1 - 1 / (255 * TRAIL_ALPHA)))
+
         for (const entry of entries) {
           const { body, sprite, trail } = entry
           const pos = body.translation()
@@ -855,12 +859,13 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
           if (!sleeping) trail.push({ x: pos.x, y: pos.y, angle, timestamp: now })
 
           // Cull samples older than trail duration — O(1) per shift with circular buffer
-          trail.shiftWhile(s => now - s.timestamp > TRAIL_DURATION)
+          trail.shiftWhile(s => now - s.timestamp > trailCullMs)
 
           // Draw trail samples oldest-to-newest with age-based alpha.
           // setTransform(cos*dpr, sin*dpr, -sin*dpr, cos*dpr, x*dpr, y*dpr) combines
           // the dpr base scale + translate + rotate into one call instead of save/translate/rotate/restore.
-          trail.forEach(sample => {
+          for (let ti = 0; ti < trail.length; ti++) {
+            const sample = trail.at(ti)
             const cos = Math.cos(sample.angle)
             const sin = Math.sin(sample.angle)
             ctx.globalAlpha = (1 - (now - sample.timestamp) / TRAIL_DURATION) * TRAIL_ALPHA
@@ -871,7 +876,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
               ctx.fillStyle = theme.onSurface
               ctx.fill(entry.path2d, 'evenodd')
             }
-          })
+          }
 
           // Draw current letter at full opacity
           const cos = Math.cos(angle)
