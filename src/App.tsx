@@ -379,8 +379,11 @@ function App() {
       <div
         style={{
           display: 'flex',
-          position: 'fixed', top: 16, right: 16,
-          alignItems: 'flex-start', gap: 32, zIndex: 1000,
+          position: 'fixed',
+          ...(isMobile
+            ? { bottom: 16, left: colLeft(1, width), alignItems: 'flex-end' }
+            : { top: 16, right: 16, alignItems: 'flex-start' }),
+          gap: 32, zIndex: 1000,
           color: 'var(--color-on-surface)',
         }}
       >
