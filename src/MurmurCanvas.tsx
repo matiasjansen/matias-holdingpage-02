@@ -66,7 +66,7 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
     // ── Tunable params (live-editable via triple-U debug panel) ────────────────
     const params = {
       speed: 2.5,             // global multiplier on MAX_SPEED / MIN_SPEED / sMax
-      trail: 0.5,              // scales effective duration; 0 = off (zero-cost path)
+      trail: 0.05,             // scales effective duration; 0 = off (zero-cost path)
       trailDuration: 0.5,      // seconds for a trail to fade to half-strength (frame-rate independent)
       trailSubsteps: 4,        // 0 = single stamp/frame
       count: 2600,             // live boid count; arrays are pre-allocated to MAX_N
