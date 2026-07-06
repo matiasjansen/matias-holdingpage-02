@@ -295,11 +295,13 @@ function App() {
 
   const timeLineLength = timeBase.length + 1 + 2  // HH:MM + ':' + SS
   const tzDelay = labelDuration + timeLineLength * CHAR_STAGGER + LINE_GAP
+  // Mode / world list / email animate in after the GMT line finishes
+  const uiDelay = tzDelay + tzLine.length * CHAR_STAGGER + LINE_GAP
 
   const hidden = undefined   // UI shows in every world (was hidden in flock)
   const columns = columnCountFor(width)
   useEffect(() => {
-    const id = window.setTimeout(() => setBooted(true), (labelDuration + 11 * CHAR_STAGGER + 0.5) * 1000)
+    const id = window.setTimeout(() => setBooted(true), (uiDelay + 11 * CHAR_STAGGER + 0.5) * 1000)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -337,7 +339,7 @@ function App() {
           color: 'var(--color-on-surface-variant)', userSelect: 'none', zIndex: 1000,
         }}
       >
-        <AnimatedLine text="Mode" startDelay={labelDuration} />
+        <AnimatedLine text="Mode" startDelay={uiDelay} />
       </span>
 
       <div
@@ -364,13 +366,13 @@ function App() {
               }}
             >
               <span className="hover-underline" style={{ flex: '0 0 auto', padding: '4px 2px', margin: '-4px -2px' }}>
-                <AnimatedLine text={w.label} startDelay={labelDuration + WORLDS.findIndex(x => x.id === w.id) * 3 * CHAR_STAGGER} />
+                <AnimatedLine text={w.label} startDelay={uiDelay + WORLDS.findIndex(x => x.id === w.id) * 3 * CHAR_STAGGER} />
               </span>
               {active && (
                 <span style={{
                   marginLeft: 'auto', paddingLeft: 8, display: 'inline-flex', transform: 'translateY(-3px)',
                   // Fade in once after the world labels finish animating; instant on later switches
-                  animation: booted ? undefined : `blurIn 0.5s ${labelDuration + 11 * CHAR_STAGGER}s ease-out both`,
+                  animation: booted ? undefined : `blurIn 0.5s ${uiDelay + 11 * CHAR_STAGGER}s ease-out both`,
                 }}>
                   <CheckIcon />
                 </span>
@@ -392,7 +394,7 @@ function App() {
           color: 'var(--color-on-surface)', userSelect: 'none', zIndex: 1000,
         }}
       >
-        <AnimatedLine text={emailCopied ? 'Copied!' : 'hi@matiasjansen.com'} startDelay={emailCopied ? 0 : labelDuration} />
+        <AnimatedLine text={emailCopied ? 'Copied!' : 'hi@matiasjansen.com'} startDelay={emailCopied ? 0 : uiDelay} />
       </span>
 
       <div
