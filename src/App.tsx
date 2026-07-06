@@ -2,7 +2,7 @@ import { PhysicsCanvas } from './PhysicsCanvas'
 import { MurmurCanvas } from './MurmurCanvas'
 import { GridOverlay } from './GridOverlay'
 import { systemMode, themeFor } from './colors'
-import { colLeft, colRight, columnCountFor, useViewportSize } from './layoutGrid'
+import { colLeft, colRight, columnCountFor, rowCountFor, rowTop, useViewportSize } from './layoutGrid'
 import { Fragment, useEffect, useState } from 'react'
 
 type World = 'ghost' | 'wind' | 'flock'
@@ -197,7 +197,7 @@ function App() {
   const [world, setWorld] = useState<World>('ghost')
   const [emailCopied, setEmailCopied] = useState(false)
   const [booted, setBooted] = useState(false)   // true once launch text animations are done
-  const { width } = useViewportSize()
+  const { width, height } = useViewportSize()
 
   const murmurActive = world === 'flock'
   const toggleGrid = () => setGridMode(v => v === 'off' ? 'modular' : 'off')
@@ -305,6 +305,9 @@ function App() {
   }, [])
 
   const isMobile = columns === 4
+  const compact = columns !== 12   // mobile + tablet: Mode/world list move to the grid rows
+  // Row 6, falling back to row 5 on shorter viewports (rowTop also clamps to the row count)
+  const modeTop = rowTop(rowCountFor(width, height) >= 9 ? 6 : 5, width, height)
   const labelWidth = isMobile ? undefined : colRight(2, width) - colLeft(1, width)
 
   return (
@@ -326,8 +329,10 @@ function App() {
       <span
         style={{
           display: hidden,
-          position: 'fixed', top: 16, left: colRight(9, width),
-          transform: 'translateX(-100%)',
+          position: 'fixed',
+          ...(compact
+            ? { top: modeTop, left: colLeft(1, width) }
+            : { top: 16, left: colRight(9, width), transform: 'translateX(-100%)' }),
           font: '200 24px "OtherSans", sans-serif', lineHeight: '32px',
           color: 'var(--color-on-surface-variant)', userSelect: 'none', zIndex: 1000,
         }}
@@ -338,8 +343,10 @@ function App() {
       <div
         style={{
           display: hidden,
-          position: 'fixed', top: 16, left: colLeft(10, width),
-          width: colRight(10, width) - colLeft(10, width),
+          position: 'fixed',
+          ...(compact
+            ? { top: modeTop, left: colLeft(2, width), width: colRight(2, width) - colLeft(2, width) }
+            : { top: 16, left: colLeft(10, width), width: colRight(10, width) - colLeft(10, width) }),
           font: '250 24px "OtherSans", sans-serif', lineHeight: '32px',
           userSelect: 'none', zIndex: 1000,
         }}
