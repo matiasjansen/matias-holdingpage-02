@@ -235,6 +235,18 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       dots: THREE.Points
       dotMat: THREE.ShaderMaterial
     } | null = null
+    // Full teardown — renderer.dispose() alone leaks the geometry, texture,
+    // and shader materials on every flag re-init (resize, theme, triple-M).
+    const disposeThree = () => {
+      if (!threeSetup) return
+      threeSetup.geometry.dispose()
+      threeSetup.texture.dispose()
+      ;((threeSetup.scene.children[0] as THREE.Mesh).material as THREE.Material).dispose()
+      ;(threeSetup.wireLines.material as THREE.Material).dispose()
+      threeSetup.dotMat.dispose()
+      threeSetup.renderer.dispose()
+      threeSetup = null
+    }
     canvas.style.backgroundColor = theme.surface
     canvas.style.display = flagModeActive ? 'none' : 'block'
     webglCanvas.style.display = flagModeActive ? 'block' : 'none'
@@ -298,8 +310,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
         computeFlagLayout(cW, cH, currentLetterSize)
 
         // Reinitialize flag on resize so geometry, cols, and uniforms match new dimensions
-        threeSetup?.renderer.dispose()
-        threeSetup = null
+        disposeThree()
       }
 
       let resizeTimer = 0
@@ -494,7 +505,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       }
 
       function initThreeFlag() {
-        threeSetup?.renderer.dispose()
+        disposeThree()
 
         const tileW = cW / COLS
         const ROWS = Math.ceil(cH / tileW)
@@ -958,8 +969,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       theme = themeFor(systemMode())
       canvas.style.backgroundColor = theme.surface; applyThemeToDocument(theme)
       buildGlyphCache?.()
-      threeSetup?.renderer.dispose()
-      threeSetup = null
+      disposeThree()
     }
     mq.addEventListener('change', onSchemeChange)
 
@@ -999,8 +1009,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
           theme = themeFor(newMode)
           canvas.style.backgroundColor = theme.surface; applyThemeToDocument(theme)
           buildGlyphCache?.()
-          threeSetup?.renderer.dispose()
-          threeSetup = null
+          disposeThree()
           window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
         }
       } else if (e.key === '9') {
@@ -1060,8 +1069,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
           }
           windBall.style.display = 'none'
           if (!flagModeActive) {
-            threeSetup?.renderer.dispose()
-            threeSetup = null
+            disposeThree()
           }
         }
       } else if (e.key === 'u' || e.key === 'U') {
@@ -1112,7 +1120,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       cleanupDrag?.()
       mq.removeEventListener('change', onSchemeChange)
       document.removeEventListener('keydown', onKeyDown)
-      threeSetup?.renderer.dispose()
+      disposeThree()
       webglCanvas.removeEventListener('mousemove',  onFlagMouseMove)
       webglCanvas.removeEventListener('mouseleave', onFlagMouseLeave)
       webglCanvas.removeEventListener('mousedown',  onFlagMouseDown)
