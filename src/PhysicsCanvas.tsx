@@ -158,9 +158,12 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
   const webglCanvasRef = useRef<HTMLCanvasElement>(null)
   const windBallRef = useRef<HTMLDivElement>(null)
   const pausedRef = useRef(paused)
+  const resumeRef = useRef<() => void>(undefined)
 
   useEffect(() => {
+    const wasPaused = pausedRef.current
     pausedRef.current = paused
+    if (wasPaused && !paused) resumeRef.current?.()
   }, [paused])
 
   useEffect(() => {
@@ -178,6 +181,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
     ctx.scale(dpr, dpr)
 
     let rafId = 0
+    let scheduled = false
     let alive = true
     let theme: Theme = themeFor(systemMode())
     let buildGlyphCache: (() => void) | undefined
@@ -751,10 +755,10 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       const draw = (now: number) => {
         if (!alive) return
 
-        // Paused (e.g. birds mode active): keep the rAF chain alive but do no work
+        // Paused (e.g. birds mode active): stop the rAF chain entirely — it
+        // gets rescheduled by resumeRef when `paused` flips back to false.
         if (pausedRef.current) {
-          lastTime = now
-          rafId = requestAnimationFrame(draw)
+          scheduled = false
           return
         }
 
@@ -961,7 +965,18 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
 
         rafId = requestAnimationFrame(draw)
       }
-      rafId = requestAnimationFrame(draw)
+
+      resumeRef.current = () => {
+        if (scheduled) return
+        scheduled = true
+        lastTime = performance.now()
+        rafId = requestAnimationFrame(draw)
+      }
+
+      if (!pausedRef.current) {
+        scheduled = true
+        rafId = requestAnimationFrame(draw)
+      }
     }
 
     // Sync with system color scheme

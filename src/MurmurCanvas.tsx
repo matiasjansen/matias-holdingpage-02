@@ -52,8 +52,13 @@ const ATLAS_ROWS = Math.ceil(CHARS.length / ATLAS_COLS)       // 3
 export function MurmurCanvas({ style, paused = false }: { style?: React.CSSProperties; paused?: boolean } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pausedRef = useRef(paused)
+  const resumeRef = useRef<() => void>(undefined)
+  const onPauseRef = useRef<() => void>(undefined)
   useEffect(() => {
+    const wasPaused = pausedRef.current
     pausedRef.current = paused
+    if (!wasPaused && paused) onPauseRef.current?.()
+    else if (wasPaused && !paused) resumeRef.current?.()
   }, [paused])
 
   useEffect(() => {
@@ -147,6 +152,10 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
       }
     }
     document.addEventListener('keydown', onKeyDown)
+
+    onPauseRef.current = () => {
+      if (panelVisible) { panelVisible = false; panel.style.display = 'none' }
+    }
 
     // ── Renderer ──────────────────────────────────────────────────────────────
     // No preserveDrawingBuffer: trails accumulate off the drawing buffer (see
@@ -447,14 +456,13 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
 
     let raf: number
     let last = performance.now()
+    let scheduled = false
 
     const tick = () => {
-      // Paused (another world active): keep the rAF chain alive but do no work,
-      // so switching back is instant — no context/shader/buffer rebuild
+      // Paused (another world active): stop the rAF chain entirely — it gets
+      // rescheduled by resumeRef when `paused` flips back to false.
       if (pausedRef.current) {
-        last = performance.now()
-        if (panelVisible) { panelVisible = false; panel.style.display = 'none' }
-        raf = requestAnimationFrame(tick)
+        scheduled = false
         return
       }
 
@@ -832,7 +840,17 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
       raf = requestAnimationFrame(tick)
     }
 
-    raf = requestAnimationFrame(tick)
+    resumeRef.current = () => {
+      if (scheduled) return
+      scheduled = true
+      last = performance.now()
+      raf = requestAnimationFrame(tick)
+    }
+
+    if (!pausedRef.current) {
+      scheduled = true
+      raf = requestAnimationFrame(tick)
+    }
 
     return () => {
       cancelAnimationFrame(raf)
