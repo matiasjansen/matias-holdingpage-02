@@ -335,7 +335,7 @@ function App() {
           display: hidden,
           position: 'fixed',
           ...(compact
-            ? { top: modeTop, left: colLeft(modeCol, width) }
+            ? { top: modeTop, left: colRight(modeCol, width), transform: 'translateX(-100%)' }
             : { top: 16, left: colRight(9, width), transform: 'translateX(-100%)' }),
           font: '200 24px "OtherSans", sans-serif', lineHeight: '32px',
           color: 'var(--color-on-surface-variant)', userSelect: 'none', zIndex: 1000,
