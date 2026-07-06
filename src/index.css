@@ -98,3 +98,8 @@ html, body, #root {
 .icon-button:hover {
   opacity: 0.6;
 }
+
+/* Pointer cursor on all interactive elements — !important wins any inline/specificity conflict */
+.hover-underline, .world-row, .world-row *, .icon-button, button {
+  cursor: pointer !important;
+}
