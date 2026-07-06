@@ -310,7 +310,7 @@ function App() {
   const compact = columns !== 12   // mobile + tablet: Mode/world list move to the grid rows
   // Row 6, falling back to row 5 on shorter viewports (rowTop also clamps to the row count)
   const isTablet = columns === 8
-  const modeCol = isTablet ? 2 : 1   // tablet: one column right, one row down
+  const modeCol = 2   // col 2 on mobile + tablet; tablet also one row down
   const modeTop = rowTop((rowCountFor(width, height) >= 9 ? 6 : 5) + (isTablet ? 1 : 0), width, height)
   const labelWidth = isMobile ? undefined : colRight(2, width) - colLeft(1, width)
 
