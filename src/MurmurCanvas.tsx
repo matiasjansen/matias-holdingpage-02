@@ -279,6 +279,7 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
     const bpx = new Float32Array(MAX_N), bpy = new Float32Array(MAX_N), bpz = new Float32Array(MAX_N)
     const bvx = new Float32Array(MAX_N), bvy = new Float32Array(MAX_N), bvz = new Float32Array(MAX_N)
     const bsMax = new Float32Array(MAX_N), bsCur = new Float32Array(MAX_N), bang = new Float32Array(MAX_N)
+    const bcos = new Float32Array(MAX_N), bsin = new Float32Array(MAX_N)
     const bci = new Uint8Array(MAX_N)
     // Previous-frame positions (copied before integration each frame) — used to
     // interpolate instance transforms across trail substeps.
@@ -355,7 +356,7 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
           gl_FragColor = vec4(uColor, a);
         }
       `,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       transparent: true,
       depthWrite: false,
     })
@@ -744,6 +745,8 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
         let da = Math.atan2(hy, hx) - bang[i]
         da = Math.atan2(Math.sin(da), Math.cos(da))
         bang[i] += da * turnLerp
+        bcos[i] = Math.cos(bang[i])
+        bsin[i] = Math.sin(bang[i])
       }
 
       // Builds instance matrices at interpolation fraction f (0 = previous frame's
@@ -752,7 +755,7 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
       const S = PLANE_S
       const buildMatricesAt = (f: number) => {
         for (let i = 0; i < n; i++) {
-          const c = Math.cos(bang[i]), s = Math.sin(bang[i])
+          const c = bcos[i], s = bsin[i]
           const px = ppx[i] + (bpx[i] - ppx[i]) * f
           const py = ppy[i] + (bpy[i] - ppy[i]) * f
           const pz = ppz[i] + (bpz[i] - ppz[i]) * f
@@ -765,6 +768,8 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
 
           mesh.setMatrixAt(i, tmpMat)
         }
+        mesh.instanceMatrix.clearUpdateRanges()
+        mesh.instanceMatrix.addUpdateRange(0, n * 16)
         mesh.instanceMatrix.needsUpdate = true
       }
 
