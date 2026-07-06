@@ -304,7 +304,7 @@ function App() {
     <>
       <MurmurCanvas style={{ display: murmurActive ? 'block' : 'none' }} paused={!murmurActive} />
       <PhysicsCanvas style={{ display: murmurActive ? 'none' : undefined }} paused={murmurActive} />
-      <span className="label" style={{ display: murmurActive ? 'none' : 'block', width: labelWidth }}>
+      <span className="label" style={{ display: 'block', width: labelWidth }}>
         <AnimatedLine text={labelText} startDelay={0} />
       </span>
       <div className="clock" style={{ display: hidden, top: 16, left: colLeft(3, width) }}>
