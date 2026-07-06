@@ -325,7 +325,7 @@ function App() {
           color: 'var(--color-on-surface-variant)', userSelect: 'none', zIndex: 1000,
         }}
       >
-        Mode
+        <AnimatedLine text="Mode" startDelay={labelDuration} />
       </span>
 
       <div
@@ -348,7 +348,9 @@ function App() {
                 color: active ? 'var(--color-on-surface)' : 'var(--color-on-surface-variant)',
               }}
             >
-              <span className="hover-underline" style={{ flex: '0 0 auto', padding: '4px 2px', margin: '-4px -2px' }}>{w.label}</span>
+              <span className="hover-underline" style={{ flex: '0 0 auto', padding: '4px 2px', margin: '-4px -2px' }}>
+                <AnimatedLine text={w.label} startDelay={labelDuration + WORLDS.findIndex(x => x.id === w.id) * 3 * CHAR_STAGGER} />
+              </span>
               {active && (
                 <span style={{ marginLeft: 'auto', paddingLeft: 8, display: 'inline-flex', transform: 'translateY(-3px)' }}>
                   <CheckIcon />
@@ -371,7 +373,7 @@ function App() {
           color: 'var(--color-on-surface)', userSelect: 'none', zIndex: 1000,
         }}
       >
-        {emailCopied ? 'Copied!' : 'hi@matiasjansen.com'}
+        <AnimatedLine text={emailCopied ? 'Copied!' : 'hi@matiasjansen.com'} startDelay={emailCopied ? 0 : labelDuration} />
       </span>
 
       <div
