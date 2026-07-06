@@ -637,7 +637,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
         scene.add(mesh)
 
         const dotMat = new THREE.ShaderMaterial({
-          uniforms: Object.assign(material.uniforms, { uColor: { value: new THREE.Color(theme.onSurfaceVariant) } }),
+          uniforms: Object.assign(material.uniforms, { uColor: { value: new THREE.Color(theme.onSurface) } }),
           vertexShader: material.vertexShader.replace(
             'gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);',
             'gl_PointSize = 2.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);'
@@ -804,7 +804,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
             mat.uniforms.uGust.value      = gust
             mat.uniforms.uWindAngle.value = windAngle
             mat.uniforms.uWindStr.value   = windStr
-            threeSetup.dotMat.uniforms.uColor.value.set(theme.onSurfaceVariant)
+            threeSetup.dotMat.uniforms.uColor.value.set(theme.onSurface)
 
             const current = mat.uniforms.uMouseActive.value
             if (smoothedNDC) {
