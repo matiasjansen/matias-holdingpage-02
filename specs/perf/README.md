@@ -22,3 +22,12 @@ Recommended order (impact / risk):
 Verification for every spec: `npm run build` must pass (or the project's tsc/vite equivalent — check `package.json`), and manually eyeball all three modes plus the toggles (triple-M, triple-S) in the dev server.
 
 Line numbers below refer to the working tree as of 2026-07-04 (uncommitted changes present); treat them as anchors, re-locate if drifted.
+
+## Round 2 (2026-07-06) — specs 08–11
+
+Specs 01–07 are implemented. Round 2, identified on `feat/new-world` at 752c6ef; same hard constraint (zero visible change), same budget note (Sonnet low effort per spec, separate commits). Recommended order:
+
+1. `08-instanced-upload-and-trig-cache.md` — cut redundant instanceMatrix uploads (~5×224 KB/frame) + trig recompute across trail substeps (low risk, birds mode)
+2. `10-stop-raf-when-paused.md` — kill the no-op rAF chain on whichever canvas is paused (low risk, both files)
+3. `11-static-letters-skip-redraw.md` — zero draw work once letters settle (medium risk — invalidation must be right; default-mode steady-state win)
+4. `09-flat-spatial-grid.md` — Map-of-arrays grid → flat counting-sort typed arrays (medium risk, hot loop; also fixes unbounded stale-bucket growth)
