@@ -1,5 +1,6 @@
 import { PhysicsCanvas } from './PhysicsCanvas'
 import { MurmurCanvas } from './MurmurCanvas'
+import { GridOverlay } from './GridOverlay'
 import { systemMode, themeFor } from './colors'
 import { useEffect, useState } from 'react'
 
@@ -120,6 +121,7 @@ function App() {
   const [seconds, setSeconds] = useState('')    // "SS"
   const [, setTheme] = useState(themeFor(systemMode()))
   const [murmurActive, setMurmurActive] = useState(false)
+  const [gridMode, setGridMode] = useState<'off' | 'modular'>('off')
 
   // Triple-S toggles the murmuration world
   useEffect(() => {
@@ -130,6 +132,24 @@ function App() {
         clearTimeout(timer)
         timer = window.setTimeout(() => { count = 0 }, 500)
         if (count >= 3) { count = 0; setMurmurActive(v => !v) }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Triple-G toggles the design-grid overlay (columns + rows)
+  useEffect(() => {
+    let count = 0, timer = 0
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'g' || e.key === 'G') {
+        count++
+        clearTimeout(timer)
+        timer = window.setTimeout(() => { count = 0 }, 500)
+        if (count >= 3) {
+          count = 0
+          setGridMode(v => v === 'off' ? 'modular' : 'off')
+        }
       }
     }
     document.addEventListener('keydown', onKey)
@@ -199,6 +219,7 @@ function App() {
           </>
         )}
       </div>
+      {gridMode !== 'off' && <GridOverlay mode={gridMode} />}
     </>
   )
 }
