@@ -352,7 +352,7 @@ function App() {
             ? { top: modeTop, left: colLeft(modeCol + 1, width), width: colRight(modeCol + 1, width) - colLeft(modeCol + 1, width) }
             : { top: 16, left: colLeft(10, width), width: colRight(10, width) - colLeft(10, width) }),
           font: '250 24px "OtherSans", sans-serif', lineHeight: '32px',
-          userSelect: 'none', zIndex: 1000,
+          userSelect: 'none', zIndex: 1000, cursor: 'pointer',
         }}
       >
         {WORLDS.map(w => {
