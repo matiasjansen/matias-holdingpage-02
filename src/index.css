@@ -24,8 +24,14 @@ html, body, #root {
   to   { opacity: 1; filter: none; }
 }
 
+/* Fast opacity-only world-switch fade (blur reserved for initial page load) */
+@keyframes worldFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .flag-enter {
-  animation: blurInHeavy 0.8s ease-out both;
+  animation: worldFadeIn 0.25s ease-out both;
 }
 
 @media (hover: none) and (max-width: 767px) {
@@ -48,6 +54,7 @@ html, body, #root {
   font-size: 24px;
   font-weight: 250;
   line-height: 32px;
+  letter-spacing: 0.01em;
   font-family: "OtherSans", sans-serif;
   user-select: none;
   z-index: 1000;
@@ -62,10 +69,19 @@ html, body, #root {
   font-size: 24px;
   font-weight: 250;
   line-height: 32px;
+  letter-spacing: 0.01em;
   font-family: "OtherSans", sans-serif;
   user-select: none;
   z-index: 1000;
   color: var(--color-on-surface);
+}
+
+@media (max-width: 639px) {
+  .clock,
+  .label {
+    font-size: 20px;
+    line-height: 28px;
+  }
 }
 
 /* Typography primitives and tokens are defined in typography.ts */

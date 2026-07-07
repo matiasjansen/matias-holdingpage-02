@@ -163,7 +163,19 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
   useEffect(() => {
     const wasPaused = pausedRef.current
     pausedRef.current = paused
-    if (wasPaused && !paused) resumeRef.current?.()
+    if (wasPaused && !paused) {
+      // Fast fade-in when returning from the flock world (whichever canvas is
+      // visible — letters or flag). Opacity only, GPU-composited.
+      const el = webglCanvasRef.current?.style.display !== 'none'
+        ? webglCanvasRef.current
+        : canvasRef.current
+      if (el) {
+        el.style.animation = 'none'
+        void el.offsetWidth // force reflow so the animation re-triggers
+        el.style.animation = 'worldFadeIn 0.25s ease-out both'
+      }
+      resumeRef.current?.()
+    }
   }, [paused])
 
   useEffect(() => {
@@ -1054,6 +1066,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       window.dispatchEvent(new CustomEvent('theme-toggle', { detail: { mode: newMode } }))
     }
     const setFlagMode = (next: boolean) => {
+      const wasFlag = flagModeActive
       flagModeActive = next
       canvas.style.display = flagModeActive ? 'none' : 'block'
       if (flagModeActive) {
@@ -1064,6 +1077,12 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       } else {
         webglCanvas.style.display = 'none'
         webglCanvas.classList.remove('flag-enter')
+        if (wasFlag) {
+          // Letters fade back in on the wind → ghost switch, matching the flag
+          canvas.style.animation = 'none'
+          void canvas.offsetWidth
+          canvas.style.animation = 'worldFadeIn 0.25s ease-out both'
+        }
       }
       windBall.style.display = 'none'
       if (!flagModeActive) {

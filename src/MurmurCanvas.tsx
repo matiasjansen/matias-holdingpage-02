@@ -58,7 +58,16 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
     const wasPaused = pausedRef.current
     pausedRef.current = paused
     if (!wasPaused && paused) onPauseRef.current?.()
-    else if (wasPaused && !paused) resumeRef.current?.()
+    else if (wasPaused && !paused) {
+      // Fast fade-in on world switch (opacity only — GPU-composited)
+      const c = canvasRef.current
+      if (c) {
+        c.style.animation = 'none'
+        void c.offsetWidth // force reflow so the animation re-triggers
+        c.style.animation = 'worldFadeIn 0.25s ease-out both'
+      }
+      resumeRef.current?.()
+    }
   }, [paused])
 
   useEffect(() => {
