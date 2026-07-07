@@ -68,13 +68,17 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
 
     const theme = themeFor(systemMode())
 
+    // Mobile perf tier — phones only (touch + narrow), not tablets or narrow
+    // desktop windows. Sampled once at init; the triple-U sliders still override.
+    const isMobile = window.matchMedia('(hover: none) and (max-width: 639px)').matches
+
     // ── Tunable params (live-editable via triple-U debug panel) ────────────────
     const params = {
       speed: 2.5,             // global multiplier on MAX_SPEED / MIN_SPEED / sMax
       trail: 0.05,             // scales effective duration; 0 = off (zero-cost path)
       trailDuration: 0.5,      // seconds for a trail to fade to half-strength (frame-rate independent)
-      trailSubsteps: 4,        // 0 = single stamp/frame
-      count: 2850,             // live boid count; arrays are pre-allocated to MAX_N
+      trailSubsteps: isMobile ? 1 : 4,  // 0 = single stamp/frame; fewer full-screen passes on phones
+      count: isMobile ? 1000 : 2850,    // live boid count; arrays are pre-allocated to MAX_N
       alignment: 2.4,
       cohesion: 0,             // global regroup + attraction do the gathering; 0 local cohesion = streaming ribbons
       separation: W_SEP,
@@ -160,8 +164,10 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
     // ── Renderer ──────────────────────────────────────────────────────────────
     // No preserveDrawingBuffer: trails accumulate off the drawing buffer (see
     // below), so the browser is free to discard it after compositing as usual.
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // Mobile: skip MSAA (trails render into non-multisampled offscreen targets
+    // anyway, and glyph edges come from texture alpha) and cap resolution lower.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isMobile })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2))
     renderer.setSize(W, H)
     renderer.setClearColor(new THREE.Color(theme.surface))
 
