@@ -5,7 +5,7 @@ import opentype from 'opentype.js'
 import { type Theme, systemMode, themeFor } from './colors'
 import { getLetterSize, getFlagCols } from './responsiveTokens'
 
-const fontUrl = '/fonts/display-regular.otf'
+const DEFAULT_FONT_URL = '/fonts/display-regular.otf'
 
 interface LetterDef {
   char: string
@@ -153,16 +153,18 @@ function applyThemeToDocument(t: Theme) {
   meta.content = t.surface
 }
 
-export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProperties; paused?: boolean } = {}) {
+export function PhysicsCanvas({ style, paused = false, fontUrl = DEFAULT_FONT_URL }: { style?: React.CSSProperties; paused?: boolean; fontUrl?: string } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const webglCanvasRef = useRef<HTMLCanvasElement>(null)
   const windBallRef = useRef<HTMLDivElement>(null)
   const pausedRef = useRef(paused)
   const resumeRef = useRef<() => void>(undefined)
+  const onPauseRef = useRef<() => void>(undefined)
 
   useEffect(() => {
     const wasPaused = pausedRef.current
     pausedRef.current = paused
+    if (!wasPaused && paused) onPauseRef.current?.()
     if (wasPaused && !paused) {
       // Fast fade-in when returning from the flock world (whichever canvas is
       // visible — letters or flag). Opacity only, GPU-composited.
@@ -1157,6 +1159,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
           setFlagMode(!flagModeActive)
         }
       } else if (e.key === 'u' || e.key === 'U') {
+        if (pausedRef.current) return // flock world owns triple-U; don't stack panels
         uCount++
         clearTimeout(uTimer)
         uTimer = window.setTimeout(() => { uCount = 0 }, 500)
@@ -1168,6 +1171,12 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       }
     }
     document.addEventListener('keydown', onKeyDown)
+
+    // Hide this world's tweak panel when the flock world takes over (its own
+    // triple-U panel occupies the same corner).
+    onPauseRef.current = () => {
+      if (panelVisible) { panelVisible = false; panel.style.display = 'none' }
+    }
 
     const toNDC = (clientX: number, clientY: number) => {
       const r = webglCanvas.getBoundingClientRect()
@@ -1216,7 +1225,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       webglCanvas.removeEventListener('touchstart', onFlagTouchStart)
       panel.remove()
     }
-  }, [])
+  }, [fontUrl])
 
   return (
     <div style={{ ...style, position: 'relative', zIndex: 0 }}>
