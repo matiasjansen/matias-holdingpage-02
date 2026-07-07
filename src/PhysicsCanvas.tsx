@@ -344,6 +344,9 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
       }
       window.addEventListener('resize', onResizeDebounced)
       cleanupResize = () => window.removeEventListener('resize', onResizeDebounced)
+      // Cold mobile loads: the iOS viewport can settle during the long awaits
+      // above (WASM + font fetch), before this listener exists — reconcile once.
+      if (window.innerWidth !== cW || window.innerHeight !== cH) onResize()
 
       const entries: Entry[] = []
       let currentLetterSize = parseInt(getLetterSize(W))
@@ -1078,7 +1081,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
         webglCanvas.style.display = 'none'
         webglCanvas.classList.remove('flag-enter')
         if (wasFlag) {
-          // Letters fade back in on the wind → ghost switch, matching the flag
+          // Letters fade back in on the wind → gravity switch, matching the flag
           canvas.style.animation = 'none'
           void canvas.offsetWidth
           canvas.style.animation = 'worldFadeIn 0.25s ease-out both'
@@ -1093,7 +1096,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
     }
     const onRequestThemeToggle = () => toggleTheme()
     const onRequestWorldSelect = (e: Event) => {
-      const world = (e as CustomEvent<{ world: 'ghost' | 'wind' | 'flock' }>).detail.world
+      const world = (e as CustomEvent<{ world: 'gravity' | 'wind' | 'flock' }>).detail.world
       if (world !== 'flock') setFlagMode(world === 'wind')
     }
     window.addEventListener('request-theme-toggle', onRequestThemeToggle)
