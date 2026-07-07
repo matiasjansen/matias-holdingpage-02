@@ -537,6 +537,13 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
         camera.position.set(0, 0, dist)
         camera.lookAt(0, 0, 0)
 
+        // Phones (portrait): ripple amplitude keyed to width collapses to ~1/4 of
+        // the desktop's apparent depth motion (camera dist is height-derived).
+        // Key it to height instead, calibrated to the 1440×900 reference aspect
+        // (0.14 × 1.6) so relative flap depth matches desktop. Desktop unchanged.
+        const isMobileFlag = window.matchMedia('(hover: none) and (max-width: 639px)').matches
+        const maxZ = isMobileFlag ? cH * 0.224 : cW * 0.14
+
         const texCanvas = buildFlagTexture()
         const texture = new THREE.CanvasTexture(texCanvas)
         texture.colorSpace = THREE.SRGBColorSpace
@@ -555,7 +562,7 @@ export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProp
             uTime:     { value: 0 },
             uGust:     { value: 1 },
             uWindAngle:{ value: 0 },
-            uMaxZ:     { value: cW * 0.14 },
+            uMaxZ:     { value: maxZ },
             uMaxY:     { value: cH * 0.07 },
             uWidth:    { value: cW },
             uHeight:   { value: cH },
