@@ -5,7 +5,7 @@ import opentype from 'opentype.js'
 import { type Theme, systemMode, themeFor } from './colors'
 import { getLetterSize, getFlagCols } from './responsiveTokens'
 
-const DEFAULT_FONT_URL = '/fonts/display-regular.otf'
+const fontUrl = '/fonts/display-regular.otf'
 
 interface LetterDef {
   char: string
@@ -153,7 +153,7 @@ function applyThemeToDocument(t: Theme) {
   meta.content = t.surface
 }
 
-export function PhysicsCanvas({ style, paused = false, fontUrl = DEFAULT_FONT_URL }: { style?: React.CSSProperties; paused?: boolean; fontUrl?: string } = {}) {
+export function PhysicsCanvas({ style, paused = false }: { style?: React.CSSProperties; paused?: boolean } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const webglCanvasRef = useRef<HTMLCanvasElement>(null)
   const windBallRef = useRef<HTMLDivElement>(null)
@@ -1225,7 +1225,7 @@ export function PhysicsCanvas({ style, paused = false, fontUrl = DEFAULT_FONT_UR
       webglCanvas.removeEventListener('touchstart', onFlagTouchStart)
       panel.remove()
     }
-  }, [fontUrl])
+  }, [])
 
   return (
     <div style={{ ...style, position: 'relative', zIndex: 0 }}>

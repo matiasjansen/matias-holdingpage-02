@@ -5,9 +5,9 @@ import { systemMode, themeFor } from './colors'
 import { colLeft, colRight, columnCountFor, rowCountFor, rowTop, useViewportSize } from './layoutGrid'
 import { Fragment, useEffect, useState } from 'react'
 
-type World = 'ghost' | 'wind' | 'flock'
+type World = 'gravity' | 'wind' | 'flock'
 const WORLDS: { id: World; label: string }[] = [
-  { id: 'ghost', label: 'Ghost' },
+  { id: 'gravity', label: 'Gravity' },
   { id: 'wind', label: 'Wind' },
   { id: 'flock', label: 'Flock' },
 ]
@@ -194,7 +194,7 @@ function App() {
   const [seconds, setSeconds] = useState('')    // "SS"
   const [, setTheme] = useState(themeFor(systemMode()))
   const [gridMode, setGridMode] = useState<'off' | 'modular'>('off')
-  const [world, setWorld] = useState<World>('ghost')
+  const [world, setWorld] = useState<World>('gravity')
   const [emailCopied, setEmailCopied] = useState(false)
   const [booted, setBooted] = useState(false)   // true once launch text animations are done
   const { width, height } = useViewportSize()
@@ -223,7 +223,7 @@ function App() {
         count++
         clearTimeout(timer)
         timer = window.setTimeout(() => { count = 0 }, 500)
-        if (count >= 3) { count = 0; setWorld(w => w === 'flock' ? 'ghost' : 'flock') }
+        if (count >= 3) { count = 0; setWorld(w => w === 'flock' ? 'gravity' : 'flock') }
       }
     }
     document.addEventListener('keydown', onKey)
@@ -311,8 +311,14 @@ function App() {
   // Row 6, falling back to row 5 on shorter viewports (rowTop also clamps to the row count)
   const isTablet = columns === 8
   const modeCol = 2   // col 2 on mobile + tablet; tablet also one row down
-  const modeTop = rowTop(isTablet ? 5 : (rowCountFor(width, height) >= 9 ? 6 : 5), width, height)
-  const labelWidth = isMobile ? undefined : colRight(2, width) - colLeft(1, width)
+  const worldRow = isTablet ? 5 : (rowCountFor(width, height) >= 9 ? 6 : 5)
+  const modeTop = rowTop(worldRow, width, height)
+  const labelWidth = colRight(2, width) - colLeft(1, width)
+  const uiFontSize = isMobile ? 20 : 24
+  const uiLineHeight = isMobile ? '28px' : '32px'
+  // mobile: no "Mode" label, so world list shifts two columns left and one row up
+  const worldCol = isMobile ? modeCol - 1 : modeCol + 1
+  const worldTop = isMobile ? rowTop(worldRow - 1, width, height) : modeTop
 
   return (
     <>
@@ -332,12 +338,12 @@ function App() {
 
       <span
         style={{
-          display: hidden,
+          display: isMobile ? 'none' : hidden,
           position: 'fixed',
           ...(compact
             ? { top: modeTop, left: colRight(modeCol, width), transform: 'translateX(-100%)' }
             : { top: 16, left: colRight(9, width), transform: 'translateX(-100%)' }),
-          font: '200 24px "OtherSans", sans-serif', lineHeight: '32px',
+          font: `${uiFontSize}px var(--ui-font)`, lineHeight: uiLineHeight, letterSpacing: 'var(--ui-tracking)',
           color: 'var(--color-on-surface-variant)', userSelect: 'none', zIndex: 1000,
         }}
       >
@@ -349,9 +355,9 @@ function App() {
           display: hidden,
           position: 'fixed',
           ...(compact
-            ? { top: modeTop, left: colLeft(modeCol + 1, width), width: colRight(modeCol + 1, width) - colLeft(modeCol + 1, width) }
+            ? { top: worldTop, left: colLeft(worldCol, width), width: colRight(worldCol, width) - colLeft(worldCol, width) }
             : { top: 16, left: colLeft(10, width), width: colRight(10, width) - colLeft(10, width) }),
-          font: '250 24px "OtherSans", sans-serif', lineHeight: '32px',
+          font: `${uiFontSize}px var(--ui-font)`, lineHeight: uiLineHeight, letterSpacing: 'var(--ui-tracking)',
           userSelect: 'none', zIndex: 1000, cursor: 'pointer',
         }}
       >
@@ -391,8 +397,8 @@ function App() {
         style={{
           display: hidden,
           padding: '4px 2px', margin: '-4px -2px',
-          position: 'fixed', bottom: 16, left: colLeft(3, width),
-          font: '250 24px "OtherSans", sans-serif', lineHeight: '32px',
+          position: 'fixed', bottom: 16, left: colLeft(isMobile ? 1 : 3, width),
+          font: `${uiFontSize}px var(--ui-font)`, lineHeight: uiLineHeight, letterSpacing: 'var(--ui-tracking)',
           color: 'var(--color-on-surface)', userSelect: 'none', zIndex: 1000,
         }}
       >
@@ -404,7 +410,7 @@ function App() {
           display: 'flex',
           position: 'fixed',
           ...(isMobile
-            ? { bottom: 16, left: colLeft(1, width), alignItems: 'flex-end' }
+            ? { bottom: 16, left: colRight(4, width), transform: 'translateX(-100%)', alignItems: 'flex-end' }
             : { top: 16, right: 16, alignItems: 'flex-start' }),
           gap: 32, zIndex: 1000,
           color: 'var(--color-on-surface)',

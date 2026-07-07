@@ -5,6 +5,17 @@
   font-style: normal;
 }
 
+@font-face {
+  font-family: "BasicSans";
+  src: url('/fonts/display-basicsans.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+:root {
+  --ui-font: "BasicSans", sans-serif;
+  --ui-tracking: -0.01em;
+}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -52,10 +63,9 @@ html, body, #root {
   top: 62px;
   left: 16px;
   font-size: 24px;
-  font-weight: 250;
   line-height: 32px;
-  letter-spacing: 0.01em;
-  font-family: "OtherSans", sans-serif;
+  letter-spacing: var(--ui-tracking);
+  font-family: var(--ui-font);
   user-select: none;
   z-index: 1000;
   white-space: pre;
@@ -67,10 +77,9 @@ html, body, #root {
   top: 16px;
   left: 16px;
   font-size: 24px;
-  font-weight: 250;
   line-height: 32px;
-  letter-spacing: 0.01em;
-  font-family: "OtherSans", sans-serif;
+  letter-spacing: var(--ui-tracking);
+  font-family: var(--ui-font);
   user-select: none;
   z-index: 1000;
   color: var(--color-on-surface);
