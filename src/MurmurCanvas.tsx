@@ -94,7 +94,7 @@ export function MurmurCanvas({ style, paused = false }: { style?: React.CSSPrope
       startleStrength: 6,
       startleRate: 1.5,        // multiplier on startle frequency (higher = more frequent)
       courseTurniness: 0.2,    // multiplier on attractor course-change turn magnitude
-      attraction: 0.7,
+      attraction: 0.5,
       regroup: 0.9,            // centroid pull so split subgroups re-merge over time
       depthNear: 600,          // max boid z toward camera; capped to dist*0.65 per frame (see nearEff)
       depthFar: 1200,          // max boid |z| away from camera; uncapped
